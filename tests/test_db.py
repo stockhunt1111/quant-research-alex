@@ -171,6 +171,41 @@ def test_writers_in_many_processes_opening_a_new_file_at_once_all_get_their_resu
     c.close()
 
 
+def _open_new_files_at_once(paths, start, failures):
+    from strategy_lab import db as d
+    for p in paths:
+        start.wait()                                     # every process opens the same new file at the same instant
+        try:
+            d.connect(Path(p)).close()
+        except sqlite3.OperationalError as e:
+            failures.put(f"{Path(p).name}: {e}")
+    failures.put(None)                                   # this process is through
+
+
+def test_processes_switching_a_new_file_to_wal_at_once_all_open_it(tmp_path):
+    """Processes switching one new file to WAL at once could each wait for the other: SQLite answers one of them
+    'locked' at once instead of calling its busy handler, and that one tries again."""
+    ctx = mp.get_context("spawn")
+    paths = [str(tmp_path / f"new_{r}.sqlite") for r in range(20)]
+    start, failures = ctx.Barrier(8, timeout=60), ctx.Queue()
+    procs = [ctx.Process(target=_open_new_files_at_once, args=(paths, start, failures)) for _ in range(8)]
+    for p in procs:
+        p.start()
+    got, through = [], 0
+    while through < len(procs):                          # read before joining: a process ends once its queue is read
+        m = failures.get(timeout=120)
+        through += m is None
+        got += [] if m is None else [m]
+    for p in procs:
+        p.join(120)
+    assert got == [] and [p.exitcode for p in procs] == [0] * 8
+    for p in paths:
+        c = sqlite3.connect(p)
+        assert c.execute("PRAGMA user_version").fetchone()[0] == db.SCHEMA_VERSION
+        assert c.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
+        c.close()
+
+
 def test_the_figures_kept_are_the_keys_the_metrics_return():
     d = pd.Series(np.random.default_rng(2).normal(0.001, 0.01, 400),
                   index=pd.date_range("2024-01-01", periods=400, freq="D", tz="UTC"))

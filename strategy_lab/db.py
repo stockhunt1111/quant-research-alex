@@ -87,8 +87,7 @@ def connect(path: Path | None = None, *, readonly: bool = False) -> sqlite3.Conn
         _refuse_another_schema(conn, path)
         conn.execute("PRAGMA query_only = ON")
         return conn
-    if conn.execute("PRAGMA journal_mode = WAL").fetchone()[0] != "wal":
-        LOG.warning("%s did not switch to WAL: readers and writers will wait for each other", path)
+    _switch_to_wal(conn, path)
     conn.execute(f"PRAGMA journal_size_limit = {JOURNAL_LIMIT}")
     if conn.execute("PRAGMA user_version").fetchone()[0] == 0:
         with write(conn):
@@ -99,6 +98,25 @@ def connect(path: Path | None = None, *, readonly: bool = False) -> sqlite3.Conn
                 conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     _refuse_another_schema(conn, path)
     return conn
+
+
+def _switch_to_wal(conn: sqlite3.Connection, path: Path) -> None:
+    """Put the file in WAL mode, which the file keeps (a no-op once it is). Processes switching one new file at once
+    could each wait for the other, so SQLite answers one of them 'locked' at once instead of calling its busy handler:
+    that one tries again, within the time a writer waits for another (`BUSY_MS`)."""
+    deadline = time.monotonic() + BUSY_MS / 1000
+    while True:
+        try:
+            mode = conn.execute("PRAGMA journal_mode = WAL").fetchone()[0]
+            break
+        except sqlite3.OperationalError as e:
+            if "locked" not in str(e) or time.monotonic() > deadline:
+                conn.close()
+                raise
+            LOG.info("%s: another process was switching it to WAL (%s), trying again", path, e)
+            time.sleep(0.01)
+    if mode != "wal":
+        LOG.warning("%s did not switch to WAL: readers and writers will wait for each other", path)
 
 
 def _refuse_another_schema(conn: sqlite3.Connection, path: Path) -> None:
