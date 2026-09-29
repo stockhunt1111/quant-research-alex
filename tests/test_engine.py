@@ -560,10 +560,74 @@ def test_a_settlement_stamped_after_its_hour_is_paid_by_the_position_held_into_i
     into = pd.DataFrame(0.0, index=p.index, columns=p.ids)
     into.iloc[: k] = 1.0                                   # held through the bar closing at 16:00, sold at its end
     held = bt.run(p, into)
-    assert held.carry.iloc[k] == pytest.approx(0.001 * held.weights.iloc[k, 0]) and held.carry.iloc[k + 1] == 0.0
+    # the whole equity long: 0.1% of the position's value at 16:00, its close, over the equity at the close before
+    close = p.close["perp:AAAUSDT"]
+    assert held.carry.iloc[k] == pytest.approx(0.001 * close.iloc[k] / close.iloc[k - 1], rel=1e-12)
+    assert held.carry.iloc[k + 1] == 0.0
     after = pd.DataFrame(0.0, index=p.index, columns=p.ids)
     after.iloc[k:] = 1.0                                   # bought at 16:00: not held when the funding settled
     assert bt.run(p, after).carry.abs().sum() == 0.0
+    stop = into.copy()
+    p.low.iloc[k, 0] = p.open.iloc[k, 0] * 0.5            # the bar closing at 16:00 falls through a 20% stop
+    stopped = bt.run(p, stop, exits=bt.Exits(stop=0.2))
+    assert not np.isnan(stopped.exits.iloc[k, 0]) and stopped.carry.iloc[k] == 0.0   # closed before it was due
+
+
+def _one_perp_day(tmp_path, monkeypatch, *, with_minutes: bool):
+    """A perp's daily bars around a day (2024-01-03) that opens at 100, is at 104 at 08:00 and 108 at 16:00, falls to 94
+    in the minute from 17:00 and closes at 110; its funding due at 08:00, 16:00 and midnight every day, 0.1% each."""
+    from strategy_lab.data import bars, minutes, store
+    from strategy_lab.data.instruments import parse
+    monkeypatch.setattr(store, "STORE_DIR", tmp_path)
+    monkeypatch.setattr(bars, "STORE_DIR", tmp_path)
+    idx = pd.DatetimeIndex(["2024-01-02", "2024-01-03", "2024-01-04", "2024-01-05"], tz="UTC")    # the days' closes
+    ohlc = {"open": [100, 100, 100, 110], "high": [101, 101, 111, 111], "low": [99, 99, 94, 109],
+            "close": [100, 100, 110, 110]}
+    frames = {f: pd.DataFrame({"perp:AAAUSDT": v}, index=idx, dtype=float) for f, v in ohlc.items()}
+    frames["volume"] = pd.DataFrame({"perp:AAAUSDT": 1e6}, index=idx)
+    frames["dollar_volume"] = frames["close"] * 1e6
+    p = bars.Panel("1d", {"perp:AAAUSDT": parse("perp:AAAUSDT")}, **frames)
+    hours = pd.date_range("2024-01-01 01:00", "2024-01-05 00:00", freq="h", tz="UTC")
+    hourly = pd.Series(100.0, index=hours)
+    day = (hours > "2024-01-03") & (hours <= "2024-01-04")
+    hourly[day] = np.interp(np.arange(day.sum()), [7, 15, 23], [104, 108, 110])   # 08:00 is the day's 8th hour
+    hourly[hours > "2024-01-04"] = 110.0
+    store.write_bars("perp", "1h", "AAAUSDT", pd.DataFrame({"open": hourly, "high": hourly, "low": hourly,
+                                                            "close": hourly, "volume": 1e6, "dollar_volume": 1e8}))
+    due = pd.date_range("2024-01-01 08:00", "2024-01-05 00:00", freq="8h", tz="UTC", name="settle_time")
+    (tmp_path / "perp" / "funding").mkdir(parents=True)
+    pd.DataFrame({"rate": 0.001}, index=due).to_parquet(tmp_path / "perp" / "funding" / "AAAUSDT.parquet")
+    if with_minutes:
+        stamps = pd.date_range("2024-01-03 00:01", "2024-01-04 00:00", freq="min", tz="UTC")
+        path = pd.Series(np.interp(np.arange(len(stamps)), [0, 479, 959, 1439], [100, 104, 108, 110]), index=stamps)
+        mins = pd.DataFrame({"open": path, "high": path, "low": path})
+        mins.loc["2024-01-03 17:01", "low"] = 94.0          # the minute from 17:00 to 17:01 falls through the stop
+        minutes.write("perp:AAAUSDT", mins, {})
+    return p
+
+
+def test_a_daily_bar_pays_each_settlement_it_held_at_on_its_value_then(tmp_path, monkeypatch):
+    p = _one_perp_day(tmp_path, monkeypatch, with_minutes=True)
+    long = pd.DataFrame(1.0, index=p.index, columns=p.ids)               # bought at 100 at the open of 2024-01-02
+    k = 2                                                                  # the day of 2024-01-03
+    held = bt.run(p, long)
+    # the whole equity held from 100: 0.1% of its value at 08:00 (104), 16:00 (108) and the close (110)
+    assert held.carry.iloc[k] == pytest.approx(0.001 * (104 + 108 + 110) / 100, rel=1e-12)
+    assert bt.funding_held(p).iloc[k, 0] == pytest.approx(0.001 * (104 + 108 + 110) / 100, rel=1e-12)
+    stopped = bt.run(p, long, exits=bt.Exits(stop=0.05))                   # stopped at 95 in the minute from 17:00
+    assert stopped.exits.iloc[k, 0] == pytest.approx(95.0)
+    cost = COSTS["crypto_perp"].commission_bps / 1e4 + COSTS["crypto_perp"].half_spread_bps / 1e4
+    # it held at 08:00 and 16:00, not at midnight; the bar's costs come out of the equity the position is a share of
+    assert stopped.carry.iloc[k] == pytest.approx((1 - cost) * 0.001 * (104 + 108) / 100, rel=1e-12)
+
+
+def test_an_exit_whose_minute_is_not_known_is_taken_at_the_middle_of_its_bar(tmp_path, monkeypatch):
+    p = _one_perp_day(tmp_path, monkeypatch, with_minutes=False)          # the stop is found on the day's own low
+    long = pd.DataFrame(1.0, index=p.index, columns=p.ids)
+    stopped = bt.run(p, long, exits=bt.Exits(stop=0.05))
+    cost = COSTS["crypto_perp"].commission_bps / 1e4 + COSTS["crypto_perp"].half_spread_bps / 1e4
+    assert stopped.exits.iloc[2, 0] == pytest.approx(95.0)
+    assert stopped.carry.iloc[2] == pytest.approx((1 - cost) * 0.001 * 104 / 100, rel=1e-12)      # 08:00 only
 
 
 def test_a_bar_with_a_close_and_no_open_is_not_traded_and_its_move_is_held_from_the_close_before():

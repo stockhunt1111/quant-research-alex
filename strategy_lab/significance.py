@@ -90,7 +90,7 @@ def random_timing(panel: Panel, weights: pd.DataFrame, days: pd.DatetimeIndex, *
         return {}
     col = [panel.ids.index(i) for i in held]
     terms = bt._terms(panel)
-    gap, intra, funding = terms.gap, terms.intra, terms.funding
+    gap, intra, funding = terms.gap, terms.intra, bt.funding_held(panel)
     rates, borrow_rate = terms.rates, terms.borrow_rate
     dt = terms.dt_years[lo:hi].astype(np.float64)
     printed = panel.close[held].iloc[lo:hi].notna().to_numpy()

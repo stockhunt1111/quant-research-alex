@@ -42,8 +42,16 @@ Conventions (all returns are fractions of equity):
     open for a fill there, inside the bar for an intrabar exit, at the close before for a next_close fill).
   * Dividends: a US stock's or ETF's cash dividend is paid on its ex-date to the weight held at the close before
     (a short pays it), as a return over that close: the bars are not adjusted for dividends.
-  * Carry: perp funding (positive rate: longs pay) on the weight held at each settlement; borrow on shorts of
-    spot/equities, accrued over calendar time.
+  * Carry: perp funding (positive rate: longs pay) at each settlement, by the position held at its moment and on the
+    position's value then, as the exchange charges it: at a bar's close (every settlement of a 1h bar, a 4h bar's, a
+    daily bar's midnight) on its value at the close; inside a bar (a daily bar's 08:00 and 16:00, a 4h bar's hours
+    on a perp settling hourly) on its value at the instrument's stored hourly close of that moment. A position an
+    intrabar exit closed pays the settlements before the minute it was closed in and none at the bar's close; where
+    that minute is not known (an exit found on the bar's own prices, a liquidation found on its high) it is taken at
+    the middle of the bar. Charged instead on the weight at the bar's open, every settlement of the bar whether or not
+    the position still held, it had moved records on crypto Top-10 by -0.13 to +0.08 points of compounded return a
+    year and their Sharpe by 0.003 at most (breakout_trail and donchian_breakout, a configuration each, 1h to 1d,
+    2019-2026). Borrow on shorts of spot/equities accrues over calendar time on the short's value at the open.
   * Exits (fill="next_open" only): stop-loss / take-profit / trailing stop, as fractions of the entry price or as
     multiples of the instrument's average true range, checked at every minute inside a bar where the store has the
     instrument's one-minute bars (`data.minutes`), and against the bar's own high and low elsewhere: a stop hit
@@ -78,12 +86,15 @@ from numba import njit, types
 from numba.typed import List
 
 from strategy_lab import indicators as ind
+from strategy_lab import log
 from strategy_lab.config import COSTS, MAX_GROSS
 from strategy_lab.data import minutes, spreads, store
 from strategy_lab.data.bars import Panel, dividends_path, funding_path, load_dividends, load_funding
 from strategy_lab.engine import costs
 
+LOG = log.get("backtest")
 YEAR = pd.Timedelta(days=365)
+MINUTE_NS = 60_000_000_000
 DATA_LAG = pd.Timedelta(days=7)
 ATR_BARS = 14                       # Wilder's period: the average true range the exits given in ATRs are measured in
 LIQUIDATION = 2.0                   # a short at 1x has lost the money it was sold for when its price has doubled
@@ -120,11 +131,14 @@ class Exits:
 @dataclass(frozen=True)
 class ExitFills:
     """Where a rule's trades were closed inside a bar by their exits (`exited`), for the engine to close its positions
-    there (`run(exit_fills=)`): the bars' and instruments' positions and the prices. Sparse: a list's prices by bar
-    and instrument are almost all empty, and a grid keeps one set per configuration."""
+    there (`run(exit_fills=)`): the bars' and instruments' positions, the prices, and the moments the minutes they
+    were found in began (int64 ns, UTC; -1 where found on a bar's own prices), which tell the funding settlements
+    inside the bar that the position still held. Sparse: a list's prices by bar and instrument are almost all empty,
+    and a grid keeps one set per configuration."""
     rows: np.ndarray
     cols: np.ndarray
     prices: np.ndarray
+    moments: np.ndarray
 
     def dense(self, n_bars: int, n_instruments: int) -> np.ndarray:
         out = np.full((n_instruments, n_bars), np.nan).T      # an instrument's bars contiguous, as the walks read them
@@ -199,6 +213,22 @@ def _meta_delisting(path: str, version: int) -> tuple[bool, tuple]:
 
 
 @dataclass(frozen=True)
+class _Funding:
+    """A panel's perp funding settlements on its bars (`_funding_terms`), each rate a return on the value of the
+    position held when it is due: those due at a bar's close summed by bar (`at_close`); those due inside a bar (a
+    daily bar's 08:00 and 16:00, a 4h bar's hours on a perp settling hourly) one by one, an instrument's in a run of
+    their own (`start[j]` to `end[j]`, by bar and moment), with their bar, their moment and their rate times the price
+    at that moment over the bar's close, which the bar's own return turns into the value of a position held from its
+    open (`_funding_paid`)."""
+    at_close: np.ndarray            # (bars, instruments), an instrument's bars contiguous
+    start: np.ndarray               # (instruments,) int64
+    end: np.ndarray                 # (instruments,) int64
+    bar: np.ndarray                 # int64
+    moment: np.ndarray              # int64 ns, UTC
+    ratio: np.ndarray               # float64
+
+
+@dataclass(frozen=True)
 class _Terms:
     """What a backtest takes from the panel alone, the same for every target run on it."""
     open_to_trade: pd.DataFrame     # from an instrument's first bar on, until it is delisted
@@ -209,7 +239,7 @@ class _Terms:
     cc: pd.DataFrame
     rates: costs.Rates              # cost per side, by instrument and bar
     borrow_rate: np.ndarray
-    funding: pd.DataFrame           # `_funding_per_bar`
+    funding: _Funding               # `_funding_terms`
     dividends: pd.DataFrame         # `_dividends_per_bar`
     dt_years: np.ndarray            # the length of each bar, in years
 
@@ -263,16 +293,17 @@ def _terms(panel: Panel) -> _Terms:
         got = panel.memo["backtest"] = version, _Terms(
             open_to_trade=panel.started & ~stopped, stopped=stopped.to_numpy(),
             tradable=_traded(panel).to_numpy() | stopped.to_numpy(), gap=gap, intra=intra, cc=cc,
-            rates=costs.rates(panel), borrow_rate=_borrow_rates(panel), funding=_funding_per_bar(panel),
+            rates=costs.rates(panel), borrow_rate=_borrow_rates(panel), funding=_funding_terms(panel),
             dividends=_dividends_per_bar(panel),
             dt_years=pd.Series(idx, index=idx).diff().fillna(pd.Timedelta(0)).to_numpy() / YEAR)
     return got[1]
 
 
 def _files_written(panel: Panel) -> tuple:
-    """When each file a panel's terms read was last written (-1: not there): a perp's delisting record and funding, a
-    stock's or ETF's dividends, a spot quote's spreads. A backtest asks on every run, and a grid runs hundreds: the
-    paths are worked out once per panel, and a file costs one stat."""
+    """When each file a panel's terms read was last written (-1: not there): a perp's delisting record, funding and,
+    on bars longer than an hour, its hourly bars (the price a settlement inside a bar is valued at), a stock's or
+    ETF's dividends, a spot quote's spreads. A backtest asks on every run, and a grid runs hundreds: the paths are
+    worked out once per panel, and a file costs one stat."""
     files = panel.memo.get("term_files")
     if files is None:
         files = panel.memo["term_files"] = tuple(str(f) for i in panel.ids for f in _term_files(i, panel.instruments[i],
@@ -282,7 +313,8 @@ def _files_written(panel: Panel) -> tuple:
 
 def _term_files(instrument_id: str, ins, timeframe: str) -> list:
     if ins.source == "perp":
-        return [store.meta_path("perp", timeframe, ins.symbol), funding_path(instrument_id)]
+        hourly = [] if timeframe == "1h" else [store.path("perp", "1h", ins.symbol)]
+        return [store.meta_path("perp", timeframe, ins.symbol), funding_path(instrument_id), *hourly]
     if ins.asset_class == "us_equity":
         return [dividends_path(ins.source, ins.symbol)]
     quoted = spreads.spread_path(instrument_id)
@@ -387,21 +419,101 @@ def _dividends_per_bar(panel: Panel) -> pd.DataFrame:
     return pd.DataFrame(out, index=panel.index, columns=panel.ids)
 
 
-def _funding_per_bar(panel: Panel) -> pd.DataFrame:
-    """Sum of funding settlements falling inside each bar (close[k-1], close[k]], per instrument, a settlement at the
-    minute it was due: Binance settles on the hour and stamps 45% of its settlements 1-10 ms after it (a stock perp's
-    second one of a day a second after it), which would put them on the bar after, paid by the position held from
-    that hour on rather than by the one held into it."""
-    out = np.zeros((len(panel.ids), len(panel.index))).T
-    edges = panel.index
-    for k, i in enumerate(panel.ids):
+def _funding_terms(panel: Panel) -> _Funding:
+    """Each perp's funding settlements on the panel's bars (`_Funding`): a settlement on the bar (close[k-1], close[k]]
+    of the minute it was due, at the bar's close when that minute is the close. Binance settles on the hour and stamps
+    45% of its settlements 1-10 ms after it (a stock perp's second one of a day a second after it), which would put
+    them on the bar after, paid by the position held from that hour on rather than by the one held into it. A
+    settlement inside a bar is valued at the instrument's price at its minute (`_price_at`); where that price is not
+    known, at the bar's open. A settlement before the panel's first close is left out: nothing is held there."""
+    n, m = len(panel.index), len(panel.ids)
+    closes = panel.index
+    at_close = np.zeros((m, n)).T
+    bars, moments, ratios, counts = [], [], [], np.zeros(m, dtype=np.int64)
+    for j, i in enumerate(panel.ids):
         f = load_funding(i)
         if f is None or f.empty:
             continue
-        pos = edges.searchsorted(f.index.floor("min"), side="left")    # settlement s belongs to the first close >= s
-        ok = pos < len(edges)
-        _summed_into(out[:, k], pos[ok], f.to_numpy()[ok])
-    return pd.DataFrame(out, index=panel.index, columns=panel.ids)
+        due = f.index.floor("min")
+        pos = closes.searchsorted(due, side="left")                   # the first close at or after its minute
+        keep = (pos < n) & ((pos > 0) | (due >= closes[0]))
+        due, pos, rate = due[keep], pos[keep], f.to_numpy(dtype=np.float64)[keep]
+        at_end = closes[pos] == due
+        _summed_into(at_close[:, j], pos[at_end], rate[at_end])
+        if at_end.all():
+            continue
+        due, pos, rate = due[~at_end], pos[~at_end], rate[~at_end]
+        close = panel.close[i].to_numpy(dtype=np.float64)[pos]
+        start = panel.open[i].to_numpy(dtype=np.float64)[pos] if panel.open is not None else close
+        price, first_hour = _price_at(panel.instruments[i], due, closes[pos - 1])   # inside a bar: never the first
+        unknown = ~np.isfinite(price)
+        if unknown.any():
+            # a gap in its hourly bars inside a bar the perp printed is the store's to fill; its first day (its daily bar
+            # opens before its first hourly one) and bars before its own (its funding began first) have none to fill
+            gap = (np.zeros(len(due), dtype=bool) if first_hour is None
+                   else unknown & np.isfinite(close) & np.asarray(due > first_hour))
+            if first_hour is None:
+                LOG.warning("%s %s has no hourly bars: its %d funding settlements inside a bar are charged on the "
+                            "position's value at the bar's open", i, panel.timeframe, int(unknown.sum()))
+            elif gap.any():
+                LOG.warning("%s %s: no hourly close inside the bar at %d funding settlements after its hourly bars "
+                            "begin (the first at %s): charged on the position's value at the bar's open", i,
+                            panel.timeframe, int(gap.sum()), due[gap][0])
+            if (unknown & ~gap).any() and first_hour is not None:
+                LOG.debug("%s %s: %d funding settlements before its first hourly bar valued at their bar's open", i,
+                          panel.timeframe, int((unknown & ~gap).sum()))
+            price = np.where(unknown, start, price)
+        # over the bar's close: the bar's own return turns it into the value of a position held from its open; a bar
+        # the instrument did not print has neither, and the position is valued at its start
+        ratio = np.where(np.isfinite(price) & np.isfinite(close) & (close > 0), rate * price / close, rate)
+        order = np.lexsort((due.asi8, pos))
+        bars.append(pos[order].astype(np.int64))
+        moments.append(due.asi8[order])
+        ratios.append(ratio[order])
+        counts[j] = len(order)
+    end = np.cumsum(counts)
+    joined = lambda parts, dtype: np.concatenate(parts).astype(dtype) if parts else np.zeros(0, dtype)   # noqa: E731
+    return _Funding(at_close=at_close, start=end - counts, end=end, bar=joined(bars, np.int64),
+                    moment=joined(moments, np.int64), ratio=joined(ratios, np.float64))
+
+
+def _price_at(ins, moments: pd.DatetimeIndex, bar_opened: pd.DatetimeIndex) -> tuple[np.ndarray, pd.Timestamp | None]:
+    """A perp's price at each moment (on the hour) inside the bar that opened at `bar_opened`: the close of its stored
+    hourly bar ending then, or of the last one before it inside that bar where that hour has no bar; NaN where the bar
+    has none that early, or the store no hourly bars of it. Beside it, its first hourly bar's close time (None: no
+    hourly bars)."""
+    try:
+        hourly = store.read_bars(ins.source, "1h", ins.symbol, ["close"])["close"]
+    except FileNotFoundError:
+        LOG.debug("%s:%s has no hourly bars to value its funding inside a bar by", ins.source, ins.symbol)
+        return np.full(len(moments), np.nan), None
+    if hourly.empty:
+        return np.full(len(moments), np.nan), None
+    k = hourly.index.searchsorted(moments, side="right") - 1
+    found = k >= 0
+    found[found] = hourly.index[k[found]] > bar_opened[found]
+    return np.where(found, hourly.to_numpy(dtype=np.float64)[np.maximum(k, 0)], np.nan), hourly.index[0]
+
+
+def funding_held(panel: Panel) -> pd.DataFrame:
+    """The funding a position held through a whole bar from its open pays, per unit of its value at the open: every
+    settlement of the bar on the value the position has then (the random-timing check's positions, which have no
+    intrabar exits). Worked out once per panel and version of its terms."""
+    terms = _terms(panel)
+    got = panel.memo.get("funding_held")
+    if got is not None and got[0] is terms:
+        return got[1]
+    f = terms.funding
+    inside = np.zeros_like(f.at_close)
+    for j in range(len(panel.ids)):
+        lo, hi = f.start[j], f.end[j]
+        if hi > lo:
+            np.add.at(inside[:, j], f.bar[lo:hi], f.ratio[lo:hi])
+    grow = 1.0 + terms.intra.to_numpy()
+    grow[~np.isfinite(grow)] = 1.0
+    out = pd.DataFrame((f.at_close + inside) * grow, index=panel.index, columns=panel.ids)
+    panel.memo["funding_held"] = terms, out
+    return out
 
 
 def _summed_into(column: np.ndarray, bars: np.ndarray, values: np.ndarray) -> None:
@@ -444,35 +556,39 @@ def atr(panel: Panel) -> np.ndarray:
 
 
 def _apply_exits(target: np.ndarray, panel: Panel, exits: Exits, stopped: np.ndarray,
-                 tradable: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+                 tradable: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Sequential intrabar exits for next-open fills.
 
-    Returns (w_session, exit_px, after): the weight held from each bar's open; the exit price where a position was
-    closed inside the bar (NaN elsewhere): a bar with an exit contributes its session return only up to the exit
-    price, and the weight at its close is zero; and the target decided at each close as the walk acts on it, zero
-    while a position an exit closed waits for its target to leave that side.
+    Returns (w_session, exit_px, exit_at, after): the weight held from each bar's open; the exit price where a position
+    was closed inside the bar (NaN elsewhere): a bar with an exit contributes its session return only up to the exit
+    price, and the weight at its close is zero; the moment the minute it was found in began (int64 ns; -1 where it was
+    found on the bar's own prices, and where there is none); and the target decided at each close as the walk acts on
+    it, zero while a position an exit closed waits for its target to leave that side.
     """
     level = lambda v: np.nan if v is None else float(v)          # noqa: E731
     by_atr = any(v is not None for v in (exits.stop_atr, exits.take_atr, exits.trail_atr))
     unit = atr(panel) if by_atr else np.full((1, 1), np.nan)
-    prices, first, last = _minutes_inside(panel)
+    prices, stamps, first, last = _minutes_inside(panel)
     return _exits_walk(np.asarray(target, dtype=np.float64), panel.open.to_numpy(), panel.high.to_numpy(),
                        panel.low.to_numpy(), unit, level(exits.stop), level(exits.take), level(exits.trail),
                        level(exits.stop_atr), level(exits.take_atr), level(exits.trail_atr),
-                       np.asarray(stopped, dtype=np.bool_), np.asarray(tradable, dtype=np.bool_), prices, first, last,
-                       exits.trail_every == "minute")
+                       np.asarray(stopped, dtype=np.bool_), np.asarray(tradable, dtype=np.bool_), prices, stamps, first,
+                       last, exits.trail_every == "minute")
 
 
 _MINUTES = types.Array(types.float32, 2, "C", readonly=True)
+_STAMPS = types.Array(types.int64, 1, "C", readonly=True)
 _NONE = np.zeros((0, 3), dtype=np.float32)
 _NONE.setflags(write=False)
+_NO_STAMPS = np.zeros(0, dtype=np.int64)
+_NO_STAMPS.setflags(write=False)
 
 
 def _minutes_inside(panel: Panel) -> tuple:
-    """Each instrument's one-minute bars (`data.minutes`, memory-mapped: open, high and low a row) and, for each of
-    the panel's bars, the first and one past the last of its minutes: those that close after the bar's open (the close
-    before it) and at or before its close. An instrument without minutes, and a bar without any, is walked on the bar's
-    own prices. Worked out once per panel."""
+    """Each instrument's one-minute bars (`data.minutes`, memory-mapped: open, high and low a row) with their close
+    times and, for each of the panel's bars, the first and one past the last of its minutes: those that close after
+    the bar's open (the close before it) and at or before its close. An instrument without minutes, and a bar without
+    any, is walked on the bar's own prices. Worked out once per panel."""
     got = panel.memo.get("minutes")
     if got is None:
         n, m = len(panel.index), len(panel.ids)
@@ -481,16 +597,19 @@ def _minutes_inside(panel: Panel) -> tuple:
         first = np.zeros((m, n), dtype=np.int64).T              # an instrument's bars contiguous, as the walk goes
         last = np.zeros((m, n), dtype=np.int64).T
         prices = List.empty_list(_MINUTES)
+        stamps = List.empty_list(_STAMPS)
         for j, i in enumerate(panel.ids):
             kept = minutes.read(i)
             if kept is None:
                 prices.append(_NONE)
+                stamps.append(_NO_STAMPS)
                 continue
             times, ohl = kept
             first[:, j] = np.searchsorted(times, opened, side="right")
             last[:, j] = np.searchsorted(times, closed, side="right")
             prices.append(ohl)
-        got = panel.memo["minutes"] = prices, first, last
+            stamps.append(times)
+        got = panel.memo["minutes"] = prices, stamps, first, last
     return got
 
 
@@ -502,9 +621,9 @@ def exited(panel: Panel, wanted: pd.DataFrame, exits: Exits) -> tuple[pd.DataFra
     seat or slot back at once, and a change of its share (the list's names changing) does not open it again."""
     terms = _terms(panel)
     wanted = wanted.reindex(index=panel.index, columns=panel.ids).fillna(0.0)
-    _, px, after = _apply_exits(np.sign(wanted.to_numpy()), panel, exits, terms.stopped, terms.tradable)
+    _, px, at, after = _apply_exits(np.sign(wanted.to_numpy()), panel, exits, terms.stopped, terms.tradable)
     rows, cols = np.nonzero(~np.isnan(px))
-    return wanted.where(after != 0.0, 0.0), ExitFills(rows, cols, px[rows, cols])
+    return wanted.where(after != 0.0, 0.0), ExitFills(rows, cols, px[rows, cols], at[rows, cols])
 
 
 @njit(cache=True)
@@ -557,15 +676,17 @@ def _hit(side, o, h, l, level_stop, level_take):
 
 @njit(cache=True)
 def _exits_walk(target, o, h, l, atr, stop, take, trail, stop_atr, take_atr, trail_atr, stopped, tradable, minute,
-                first, last, per_minute):
+                stamps, first, last, per_minute):
     """The bar-by-bar walk of `_apply_exits`, compiled; a level that is not set is NaN, and so is `atr` when no level
     is given in ATRs (a 1x1 array then). Instrument j's bar k is walked minute by minute through `minute[j]`'s rows
-    `first[k, j]` to `last[k, j]` - 1 where it has any, the levels checked against each minute's prices, and otherwise
-    on the bar's own prices. The best price since entry moves after each minute with `per_minute` (a trailing stop
-    re-set at every minute's close), and otherwise after each bar, from the bar's own high or low."""
+    `first[k, j]` to `last[k, j]` - 1 where it has any, the levels checked against each minute's prices (an exit found
+    there is dated by the minute's start: its close time in `stamps[j]` less a minute), and otherwise on the bar's own
+    prices. The best price since entry moves after each minute with `per_minute` (a trailing stop re-set at every
+    minute's close), and otherwise after each bar, from the bar's own high or low."""
     n, m = target.shape
     w_sess = np.zeros((m, n)).T                  # an instrument's bars contiguous: the walk goes instrument by instrument
     exit_px = np.full((m, n), np.nan).T
+    exit_at = np.full((m, n), -1, dtype=np.int64).T
     after = np.zeros((m, n)).T
     after[:, :] = target
     with_atr = not (np.isnan(stop_atr) and np.isnan(take_atr) and np.isnan(trail_atr))
@@ -599,6 +720,7 @@ def _exits_walk(target, o, h, l, atr, stop, take, trail, stop_atr, take_atr, tra
             side = np.sign(held)
             atr_now = atr[k - 1, j] if with_atr else np.nan
             px = np.nan
+            at = -1
             if first[k, j] < last[k, j]:
                 inside = minute[j]
                 for q in range(first[k, j], last[k, j]):
@@ -607,6 +729,7 @@ def _exits_walk(target, o, h, l, atr, stop, take, trail, stop_atr, take_atr, tra
                     px = _hit(side, np.float64(inside[q, 0]), np.float64(inside[q, 1]), np.float64(inside[q, 2]),
                               level_stop, level_take)
                     if not np.isnan(px):
+                        at = stamps[j][q] - MINUTE_NS
                         break
                     if per_minute:
                         best = max(best, np.float64(inside[q, 1])) if side > 0 else min(best, np.float64(inside[q, 2]))
@@ -620,12 +743,13 @@ def _exits_walk(target, o, h, l, atr, stop, take, trail, stop_atr, take_atr, tra
                     best = max(best, h[k, j]) if side > 0 else min(best, l[k, j])
             if not np.isnan(px):
                 exit_px[k, j] = px
+                exit_at[k, j] = at
                 out_side = side
                 held = 0.0
                 entry = best = unit = np.nan
         if out_side != 0.0 and np.sign(target[n - 1, j]) == out_side:    # the last close: no bar left to walk
             after[n - 1, j] = 0.0
-    return w_sess, exit_px, after
+    return w_sess, exit_px, exit_at, after
 
 
 def run(panel: Panel, target: pd.DataFrame, *, fill: str = "next_open", exits: Exits | None = None,
@@ -657,25 +781,45 @@ def run(panel: Panel, target: pd.DataFrame, *, fill: str = "next_open", exits: E
         rates = terms.rates
         at_fill = np.concatenate([rates.at_close[:1], rates.at_close[:-1]])   # the close before: where W's fills are
         return _result(panel, fill, none, _held_returns(
-            W, none.copy(), none, none, np.zeros((m, n)).T, cc, terms.funding.to_numpy(), terms.dividends.to_numpy(),
-            rates.flat, rates.column, at_fill, at_fill, terms.borrow_rate, terms.dt_years, filled_on, book, True,
-            MAX_GROSS))
+            W, none.copy(), none, none, np.zeros((m, n)).T, cc, *_funding_args(terms.funding),
+            *_exit_moments(np.zeros(0, np.int64), np.zeros(0, np.int64), np.zeros(0, np.int64), m),
+            panel.index.asi8, terms.dividends.to_numpy(), rates.flat, rates.column, at_fill, at_fill,
+            terms.borrow_rate, terms.dt_years, filled_on, book, True, MAX_GROSS))
 
     if exit_fills is not None:
         w_session = _filled(T, tradable, stopped)
         exit_px = exit_fills.dense(n, m)
         exit_px[w_session == 0.0] = np.nan                     # a trade the target does not hold there is not closed
+        kept = w_session[exit_fills.rows, exit_fills.cols] != 0.0
+        rows, cols, moments = exit_fills.rows[kept], exit_fills.cols[kept], exit_fills.moments[kept]
     elif exits.any():
-        w_session, exit_px, _ = _apply_exits(T, panel, exits, stopped, tradable)
+        w_session, exit_px, exit_at, _ = _apply_exits(T, panel, exits, stopped, tradable)
+        rows, cols = np.nonzero(~np.isnan(exit_px))
+        moments = exit_at[rows, cols]
     else:
         w_session = _filled(T, tradable, stopped)
         exit_px = np.full((m, n), np.nan).T
+        rows = cols = moments = np.zeros(0, np.int64)
     exit_px = exit_px.copy()                                   # the walk writes its liquidations into it
     rates = terms.rates
     return _result(panel, fill, exit_px, _held_returns(
         w_session, exit_px, panel.open.to_numpy(), panel.high.to_numpy(), terms.gap.to_numpy(), terms.intra.to_numpy(),
-        terms.funding.to_numpy(), terms.dividends.to_numpy(), rates.flat, rates.column, rates.at_open, rates.during,
-        terms.borrow_rate, terms.dt_years, tradable, book, False, MAX_GROSS))
+        *_funding_args(terms.funding), *_exit_moments(rows, cols, moments, m), panel.index.asi8,
+        terms.dividends.to_numpy(), rates.flat, rates.column, rates.at_open, rates.during, terms.borrow_rate,
+        terms.dt_years, tradable, book, False, MAX_GROSS))
+
+
+def _funding_args(f: _Funding) -> tuple:
+    return f.at_close, f.start, f.end, f.bar, f.moment, f.ratio
+
+
+def _exit_moments(rows: np.ndarray, cols: np.ndarray, moments: np.ndarray, m: int) -> tuple:
+    """The intrabar exits' moments (`_apply_exits`' exit_at, `ExitFills.moments`) instrument by instrument, as the walk
+    reads them: each instrument's run (`start[j]` to `end[j]`) of its exits' bars and moments, in the order of bars."""
+    order = np.lexsort((rows, cols))
+    counts = np.bincount(cols, minlength=m).astype(np.int64) if len(cols) else np.zeros(m, dtype=np.int64)
+    end = np.cumsum(counts)
+    return end - counts, end, rows[order].astype(np.int64), moments[order].astype(np.int64)
 
 
 def _result(panel: Panel, fill: str, exit_px: np.ndarray, walked: tuple) -> Result:
@@ -792,9 +936,40 @@ def _funded(want, pre, scale):
     return want * scale
 
 
+@njit(cache=True)
+def _funding_paid(t, j, closed, liquidated_now, grow, at_close, f_next, f_end, f_bar, f_moment, f_ratio, e_next, e_end,
+                  e_bar, e_moment, closes_ns):
+    """The funding instrument j's position held from bar t's open pays over the bar, per unit of its value at the open:
+    each settlement it still held at, on its value then (`_Funding`; `grow`: the bar's close over the price its session
+    starts from). A position closed inside the bar (`closed`) pays none at the close, and inside the bar those before
+    the minute it was closed in (`e_*`: the exits' moments); where that minute is not known (found on the bar's own
+    prices, or a liquidation, `liquidated_now`) it is taken at the middle of the bar. `f_next` and `e_next` are each
+    instrument's place in its run of settlements and exits, moved on as the bars go."""
+    moment = closes_ns[t]
+    if closed:
+        moment = -1
+        if not liquidated_now:
+            while e_next[j] < e_end[j] and e_bar[e_next[j]] < t:
+                e_next[j] += 1
+            if e_next[j] < e_end[j] and e_bar[e_next[j]] == t:
+                moment = e_moment[e_next[j]]
+        if moment < 0:
+            moment = (closes_ns[t - 1] + closes_ns[t]) // 2 if t > 0 else closes_ns[t]
+    total = 0.0 if closed else at_close[t, j]
+    while f_next[j] < f_end[j] and f_bar[f_next[j]] < t:
+        f_next[j] += 1
+    q = f_next[j]
+    while q < f_end[j] and f_bar[q] == t:
+        if f_moment[q] <= moment:                      # still held when it was due: before the minute it was closed in
+            total += f_ratio[q]
+        q += 1
+    return total * grow
+
+
 @njit(cache=True, error_model="numpy")
-def _held_returns(w, exit_px, opn, high, gap, intra, funding, dividends, flat_rate, rate_column, fill_rate, exit_rate,
-                  borrow_rate, dt_years, tradable, book, paid_after_fill, max_gross):
+def _held_returns(w, exit_px, opn, high, gap, intra, fund_at_close, fund_start, fund_end, fund_bar, fund_moment,
+                  fund_ratio, exit_start, exit_end, exit_bar, exit_moment, closes_ns, dividends, flat_rate, rate_column,
+                  fill_rate, exit_rate, borrow_rate, dt_years, tradable, book, paid_after_fill, max_gross):
     """Each bar's net return, gross return, cost, carry and turnover of an account that holds units, the weight each
     position was last filled to, the exposure held through each bar and the exposure its fills could not buy: a
     position is bought or resized to its fill `w` (a fraction of the equity at that moment) and then held, its weight
@@ -810,8 +985,11 @@ def _held_returns(w, exit_px, opn, high, gap, intra, funding, dividends, flat_ra
     `engine.costs.Rates`), and `flat_rate` otherwise. A bar is its gap from the close before, on the weights held at
     that close, its fills at the open, then its session. A dividend goes to the weight held at the close before the
     ex-date's first bar; `paid_after_fill` gives it to the weight after the fill instead (fills at the close before,
-    next_close's). Only the instruments taking part in the book on a bar are walked (`_involved`), bar by bar: a
-    position's weight depends on the whole book's return."""
+    next_close's). Funding (`fund_*`: `_Funding`) is paid by each position at the settlements it held at, on its value
+    then (`_funding_paid`; `exit_*`: the intrabar exits' moments, `_exit_moments`; `closes_ns`: the bars' close
+    times), and it and a short's borrow come out of the equity after the bar's fills, where the positions are measured.
+    Only the instruments taking part in the book on a bar are walked (`_involved`), bar by bar: a position's weight
+    depends on the whole book's return."""
     n, m = w.shape
     start, end, inst, moved = _involved(w)
     active = np.empty(m, dtype=np.int64)          # the instruments walked this bar, in no order
@@ -836,6 +1014,8 @@ def _held_returns(w, exit_px, opn, high, gap, intra, funding, dividends, flat_ra
     turnover = np.empty(n)
     exposure = np.empty(n)
     unfunded = np.zeros(n)
+    f_next = fund_start.copy()                    # each instrument's next funding settlement inside a bar
+    e_next = exit_start.copy()                    # ... and its next intrabar exit's moment
     k = 0
     for t in range(n):
         while k < len(start) and start[k] == t:
@@ -942,7 +1122,10 @@ def _held_returns(w, exit_px, opn, high, gap, intra, funding, dividends, flat_ra
             if x != 0.0:
                 held_now += abs(x)
                 session += x * _session_return(exit_px[t, j], opn[t, j], intra[t, j])
-                fund += x * funding[t, j]
+                grow = 1.0 + intra[t, j] if np.isfinite(intra[t, j]) else 1.0
+                fund += x * _funding_paid(t, j, not np.isnan(exit_px[t, j]), liquidated[t, j], grow, fund_at_close,
+                                          f_next, fund_end, fund_bar, fund_moment, fund_ratio, e_next, exit_end,
+                                          exit_bar, exit_moment, closes_ns)
                 borrow += max(-x, 0.0) * borrow_rate[j]
                 if paid_after_fill:
                     paid += x * dividends[t, j]
@@ -961,7 +1144,8 @@ def _held_returns(w, exit_px, opn, high, gap, intra, funding, dividends, flat_ra
                 continue
             a += 1
         gross[t] = (1.0 + gap_sum) * (1.0 + session) - 1.0
-        carry[t] = fund + borrow * dt_years[t] - paid
+        # funding and borrow are paid on positions (x) measured as fractions of the equity after the bar's fills
+        carry[t] = (1.0 + gap_sum) * (1.0 - c) * (fund + borrow * dt_years[t]) - paid
         net[t] = (1.0 + gap_sum) * (1.0 - c) * (1.0 + session) - 1.0 - carry[t]
         cost[t] = c
         turnover[t] = turn

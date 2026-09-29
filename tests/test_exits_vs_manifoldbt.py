@@ -38,7 +38,7 @@ def reference():
 
 @pytest.mark.parametrize("variant", list(VARIANTS))
 def test_exits_match_manifoldbt_on_every_shared_entry(panel, reference, variant, monkeypatch):
-    monkeypatch.setattr(bt, "_funding_per_bar", lambda p: pd.DataFrame(0.0, index=p.index, columns=p.ids))
+    monkeypatch.setattr(bt, "load_funding", lambda instrument_id: None)          # ManifoldBT's runs pay no funding
     c = panel.close["perp:BTCUSDT"]
     target = pd.DataFrame({"perp:BTCUSDT": (ind.sma(c, 10) > ind.sma(c, 30)).astype(float)})
     ours = ledger(panel, bt.run(panel, target, exits=VARIANTS[variant]))

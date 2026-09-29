@@ -559,7 +559,17 @@ and without it, and writes reports/peer_check.md.
   a coin that multiplied lost more than the account (`big_move_follow` on crypto Top-100 1d, 2026-09-28: a drawdown of
   105%).
 * Costs per side by asset class (`config.COSTS`): commission + half-spread; perp funding and short borrow are charged.
-  A funding settlement is paid by the position held into its hour: Binance stamps 45% of them 1-10 ms after it. A spot
+  A funding settlement is paid by the position held into its hour (Binance stamps 45% of them 1-10 ms after it), on
+  the position's value at that moment, as the exchange charges it: at a bar's close on its value at the close; inside
+  a bar (a daily bar's 08:00 and 16:00, a 4h bar's hours on a perp settling hourly) on its value at the stored hourly
+  close of the hour. A position an intrabar exit closed pays the settlements before the minute it was closed in and
+  none at the bar's close; where that minute is not known (an exit found on the bar's own prices, a liquidation) it
+  is taken at the middle of the bar. Charged on the weight at the bar's open, on every settlement of the bar whether
+  or not the position still held, it had moved records on crypto Top-10 by -0.13 to +0.08 points of compounded
+  return a year and their Sharpe by 0.003 at most (measured 2026-09-29 on breakout_trail and donchian_breakout, a
+  configuration each, 1h to 1d; on 1h the funding a stop's bar paid at its close went, on 1d the value at 08:00 and
+  16:00 of positions that had risen since the open came); ml_direction on ADA 1h went from 47.29% to 47.30% a year.
+  A spot
   quote of a commodity (gold, silver, platinum, palladium, WTI crude) pays half the spread its broker quoted at the
   fill instead of its class's half-spread (`engine.costs`), bar by bar: at a bar's open for a fill there, the median of
   its hours' spreads for a stop or a target filled inside it, at the close for a fill at the close; a bar with no
