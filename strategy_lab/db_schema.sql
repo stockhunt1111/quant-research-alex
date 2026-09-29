@@ -1,8 +1,7 @@
--- The app's database (db/app.sqlite), version 1: every evaluation with its figures and series, the runs that produce
--- them, and the luck bar derived from them. Written by strategy_lab.db; read by the server, the summaries and the
--- batch scripts. Days are 'YYYY-MM-DD' (UTC), moments ISO-8601 UTC; a figure that is not a number (NaN, ±inf) is NULL.
--- A JSON column holds what a strategy or a check shapes itself: a strategy's parameters, a check's measurement.
--- The steps after this one (db_schema_2.sql, ...) add to these tables.
+-- The app's database (db/app.sqlite): every evaluation with its figures and series, the runs that produce them, and
+-- the luck bar derived from them. Written by strategy_lab.db; read by the server, the summaries and the batch scripts.
+-- Days are 'YYYY-MM-DD' (UTC), moments ISO-8601 UTC; a figure that is not a number (NaN, ±inf) is NULL. A JSON column
+-- holds what a strategy or a check shapes itself: a strategy's parameters, a check's measurement.
 
 -- A strategy as the result that names it last described it (strategies/<name>.py, Strategy.description): a result
 -- of a strategy that no longer exists keeps its rule's text.
@@ -63,36 +62,42 @@ CREATE TABLE run_job (
 CREATE INDEX run_job_by_state ON run_job (run_id, state);
 
 -- Buy-and-hold of a list or of one instrument over a record's days (engine.hold): the series every result on the
--- same days shares, and its figures (metrics.core), the popup's Buy & hold column.
+-- same days shares, and its figures (metrics.core), the popup's Buy & hold column; beside them its K-ratio (db.k_ratio)
+-- and its average month at the target's drawdown fully invested (db.at_target_dd, db.HELD_GROSS), with the multiple
+-- and the same over its last five years: what holding makes at the drawdown a result's own figure is sized to.
 CREATE TABLE benchmark (
-    id                 INTEGER PRIMARY KEY,
-    list_id            TEXT,
-    instrument_id      TEXT,
-    timeframe          TEXT NOT NULL CHECK (timeframe IN ('1h', '4h', '1d')),
-    first_day          TEXT NOT NULL,
-    days               INTEGER NOT NULL CHECK (days > 0),
-    series_sha         TEXT NOT NULL,
-    series             BLOB NOT NULL,
-    start              TEXT,
-    end                TEXT,
-    months             INTEGER,
-    avg_monthly        REAL,
-    median_monthly     REAL,
-    pct_green          REAL,
-    pct_red            REAL,
-    months_active      INTEGER,
-    pct_months_active  REAL,
-    pct_green_active   REAL,
-    pct_red_active     REAL,
-    worst_month        REAL,
-    best_month         REAL,
-    longest_red_streak INTEGER,
-    cagr               REAL,
-    ann_vol            REAL,
-    sharpe             REAL,
-    sortino            REAL,
-    max_dd             REAL,
-    max_dd_days        INTEGER,
+    id                    INTEGER PRIMARY KEY,
+    list_id               TEXT,
+    instrument_id         TEXT,
+    timeframe             TEXT NOT NULL CHECK (timeframe IN ('1h', '4h', '1d')),
+    first_day             TEXT NOT NULL,
+    days                  INTEGER NOT NULL CHECK (days > 0),
+    series_sha            TEXT NOT NULL,
+    series                BLOB NOT NULL,
+    start                 TEXT,
+    end                   TEXT,
+    months                INTEGER,
+    avg_monthly           REAL,
+    median_monthly        REAL,
+    pct_green             REAL,
+    pct_red               REAL,
+    months_active         INTEGER,
+    pct_months_active     REAL,
+    pct_green_active      REAL,
+    pct_red_active        REAL,
+    worst_month           REAL,
+    best_month            REAL,
+    longest_red_streak    INTEGER,
+    cagr                  REAL,
+    ann_vol               REAL,
+    sharpe                REAL,
+    sortino               REAL,
+    max_dd                REAL,
+    max_dd_days           INTEGER,
+    k_ratio               REAL,
+    at_target_dd          REAL,
+    at_target_dd_multiple REAL,
+    at_target_dd_5y       REAL,
     CHECK ((list_id IS NULL) <> (instrument_id IS NULL))
 ) STRICT;
 CREATE UNIQUE INDEX benchmark_by_series ON benchmark (coalesce(list_id, ''), coalesce(instrument_id, ''), timeframe,
@@ -143,40 +148,47 @@ CREATE INDEX result_by_list ON result (list_id, timeframe);
 CREATE INDEX result_by_benchmark ON result (benchmark_id);
 
 -- A result's figures (metrics.scorecard): out-of-sample, and the configuration best on the whole history over the same
--- days (in_sample); avg_win, avg_loss and profit_factor from its trades.
+-- days (in_sample); avg_win, avg_loss and profit_factor from its trades; the K-ratio (db.k_ratio) and the average month
+-- with the positions scaled so that the max drawdown is the target's (db.at_target_dd), with the multiple and the same
+-- over the record's last five years, from its series: a scope without a kept series (an instrument alone's in-sample
+-- record) has none.
 CREATE TABLE result_figures (
-    result_id          INTEGER NOT NULL REFERENCES result (id) ON DELETE CASCADE,
-    scope              TEXT NOT NULL CHECK (scope IN ('out_of_sample', 'in_sample')),
-    start              TEXT,
-    end                TEXT,
-    months             INTEGER,
-    avg_monthly        REAL,
-    median_monthly     REAL,
-    pct_green          REAL,
-    pct_red            REAL,
-    months_active      INTEGER,
-    pct_months_active  REAL,
-    pct_green_active   REAL,
-    pct_red_active     REAL,
-    worst_month        REAL,
-    best_month         REAL,
-    longest_red_streak INTEGER,
-    cagr               REAL,
-    ann_vol            REAL,
-    sharpe             REAL,
-    sortino            REAL,
-    max_dd             REAL,
-    max_dd_days        INTEGER,
-    n_trades           INTEGER,
-    trades_per_month   REAL,
-    win_rate           REAL,
-    avg_trade          REAL,
-    median_trade_bars  REAL,
-    time_in_market     REAL,
-    avg_gross          REAL,
-    avg_win            REAL,
-    avg_loss           REAL,
-    profit_factor      REAL,
+    result_id             INTEGER NOT NULL REFERENCES result (id) ON DELETE CASCADE,
+    scope                 TEXT NOT NULL CHECK (scope IN ('out_of_sample', 'in_sample')),
+    start                 TEXT,
+    end                   TEXT,
+    months                INTEGER,
+    avg_monthly           REAL,
+    median_monthly        REAL,
+    pct_green             REAL,
+    pct_red               REAL,
+    months_active         INTEGER,
+    pct_months_active     REAL,
+    pct_green_active      REAL,
+    pct_red_active        REAL,
+    worst_month           REAL,
+    best_month            REAL,
+    longest_red_streak    INTEGER,
+    cagr                  REAL,
+    ann_vol               REAL,
+    sharpe                REAL,
+    sortino               REAL,
+    max_dd                REAL,
+    max_dd_days           INTEGER,
+    n_trades              INTEGER,
+    trades_per_month      REAL,
+    win_rate              REAL,
+    avg_trade             REAL,
+    median_trade_bars     REAL,
+    time_in_market        REAL,
+    avg_gross             REAL,
+    avg_win               REAL,
+    avg_loss              REAL,
+    profit_factor         REAL,
+    k_ratio               REAL,
+    at_target_dd          REAL,
+    at_target_dd_multiple REAL,
+    at_target_dd_5y       REAL,
     PRIMARY KEY (result_id, scope)
 ) STRICT, WITHOUT ROWID;
 
@@ -302,12 +314,13 @@ CREATE TABLE instrument_stats (
 ) STRICT;
 
 -- How many independent tries a family of results adds up to (board.luck_of) and the score luck gives the best of them
--- one time in twenty: lists — every list result, the luck bar of its checks; picks — every strategy_pick result.
--- covers: the family's results it was worked out on (how many, the last id, the last evaluated_at): they changed
--- since when it no longer matches.
+-- one time in twenty: lists — every list result, the luck bar of its checks; picks — every strategy_pick result;
+-- assets — the strategies run on instruments alone, every (strategy, instrument, timeframe) pair scored once however
+-- many lists scored it (board.refresh_asset_tries). covers: the family's results it was worked out on (how many, the
+-- last id, the last evaluated_at): they changed since when it no longer matches.
 CREATE TABLE tries (
     id          INTEGER PRIMARY KEY,
-    family      TEXT NOT NULL CHECK (family IN ('lists', 'picks')),
+    family      TEXT NOT NULL CHECK (family IN ('lists', 'picks', 'assets')),
     computed_at TEXT NOT NULL,
     covers      TEXT NOT NULL,
     saved       INTEGER NOT NULL,
@@ -315,6 +328,18 @@ CREATE TABLE tries (
     best_95     REAL NOT NULL,
     code_sha    TEXT NOT NULL
 ) STRICT;
+
+-- An instrument's own tries in a count of family 'assets': its pairs (its timeframes, a rule and its variants on it),
+-- correlated as their records are. A result on an instrument is judged against the tries on that instrument, and its
+-- luck is shown against those on every instrument too.
+CREATE TABLE instrument_tries (
+    tries_id      INTEGER NOT NULL REFERENCES tries (id) ON DELETE CASCADE,
+    instrument_id TEXT NOT NULL,
+    saved         INTEGER NOT NULL,
+    independent   REAL NOT NULL,
+    best_95       REAL NOT NULL,
+    PRIMARY KEY (tries_id, instrument_id)
+) STRICT, WITHOUT ROWID;
 
 -- Every result saved or deleted, in order: what the server tells the pages to fetch again.
 CREATE TABLE change (

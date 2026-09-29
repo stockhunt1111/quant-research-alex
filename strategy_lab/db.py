@@ -5,14 +5,14 @@
 
 One SQLite file in WAL mode (db_schema.sql beside this module says what each table holds). The batch processes write it,
 one transaction per result (per run of a list's instruments alone), so a reader never sees half of one and never waits
-for a writer; writers queue behind each other (`BUSY_MS`). The schema is applied in forward-only steps counted by
-PRAGMA user_version, inside one IMMEDIATE transaction, so processes opening a new file at once apply it once.
+for a writer; writers queue behind each other (`BUSY_MS`). A new file gets the schema inside one IMMEDIATE transaction,
+so processes opening it at once make it once; a file whose PRAGMA user_version is not SCHEMA_VERSION is refused.
 
 What is stored is what an evaluation computed, and a few figures the writer works out from what it saves: a record's
 K-ratio and its average month at the target's drawdown from its series, a buy & hold's from its own, the trades' average
-win, average loss and profit factor from them; such a figure is not the evaluation's, so its code is not in the results' stamp, and a schema step gives it to the results saved before. What is
-judged from it — a robustness check's pass or fail, the deflated Sharpe, whether a result is stale — is worked out when
-it is read (board, the server), so a threshold can change without a re-run.
+win, average loss and profit factor from them; such a figure is not the evaluation's, so its code is not in the results'
+stamp. What is judged from it — a robustness check's pass or fail, the deflated Sharpe, whether a result is stale — is
+worked out when it is read (board, the server), so a threshold can change without a re-run.
 """
 from __future__ import annotations
 
@@ -42,13 +42,7 @@ LOG = log.get("db")
 # STRATEGY_LAB_DB points a process at another file: a test's, or the server's `--db` passed on to the runs it starts
 DB_PATH = Path(os.environ.get("STRATEGY_LAB_DB") or ROOT_DIR / "db" / "app.sqlite")
 SCHEMA = Path(__file__).with_name("db_schema.sql")
-# (version, SQL): applied in order to an older file; a step's SQL can call k_ratio(days, series) and at_target_dd(...)
-# (`migrate`)
-MIGRATIONS: tuple[tuple[int, Path], ...] = ((1, SCHEMA), (2, SCHEMA.with_name("db_schema_2.sql")),
-                                            (3, SCHEMA.with_name("db_schema_3.sql")),
-                                            (4, SCHEMA.with_name("db_schema_4.sql")),
-                                            (5, SCHEMA.with_name("db_schema_5.sql")),
-                                            (6, SCHEMA.with_name("db_schema_6.sql")))
+SCHEMA_VERSION = 6                 # a file's PRAGMA user_version: a change of SCHEMA raises it
 BUSY_MS = 60_000                   # how long a writer waits for another's transaction before it gives up
 JOURNAL_LIMIT = 64 * 1024 * 1024   # the WAL file is cut back to this after a checkpoint
 CHANGE_DAYS = 1                    # the change log the server reads keeps a day: a page that was away reloads everything
@@ -81,7 +75,7 @@ TRADE_COLUMNS = ("instrument", "side", "entry_time", "exit_time", "entry_px", "e
 # ---------------------------------------------------------------------------------------------------- connection
 def connect(path: Path | None = None, *, readonly: bool = False) -> sqlite3.Connection:
     """A connection in autocommit mode (transactions are opened explicitly, `write`), rows by column name. A writer's
-    connection brings the file to the current schema first; a reader's refuses an older file and cannot write."""
+    connection gives a new file the schema first; a reader's cannot write. Both refuse a file at another schema."""
     path = Path(path or DB_PATH)
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path, timeout=BUSY_MS / 1000, isolation_level=None, check_same_thread=False)
@@ -90,39 +84,30 @@ def connect(path: Path | None = None, *, readonly: bool = False) -> sqlite3.Conn
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA synchronous = NORMAL")
     if readonly:
-        version = conn.execute("PRAGMA user_version").fetchone()[0]
-        if version < MIGRATIONS[-1][0]:
-            conn.close()
-            raise RuntimeError(f"{path} is at schema {version}, the code needs {MIGRATIONS[-1][0]}: "
-                               "run `python -m strategy_lab db migrate`")
+        _refuse_another_schema(conn, path)
         conn.execute("PRAGMA query_only = ON")
         return conn
     if conn.execute("PRAGMA journal_mode = WAL").fetchone()[0] != "wal":
         LOG.warning("%s did not switch to WAL: readers and writers will wait for each other", path)
     conn.execute(f"PRAGMA journal_size_limit = {JOURNAL_LIMIT}")
-    migrate(conn)
+    if conn.execute("PRAGMA user_version").fetchone()[0] == 0:
+        with write(conn):
+            if conn.execute("PRAGMA user_version").fetchone()[0] == 0:     # another process may have made it meanwhile
+                LOG.info("%s: a new file, schema %d", path, SCHEMA_VERSION)
+                for statement in _statements(SCHEMA.read_text()):
+                    conn.execute(statement)
+                conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+    _refuse_another_schema(conn, path)
     return conn
 
 
-def migrate(conn: sqlite3.Connection) -> int:
-    """Apply the schema steps the file has not had, in one IMMEDIATE transaction; returns the schema version. A step
-    works out a new figure of the results already saved from the series kept with them: its SQL calls
-    k_ratio(days, series), `k_ratio` of a series as this file keeps it, and at_target_dd(first_day, days, series,
-    avg_gross, time_in_market), `at_target_dd` of one, as a JSON array of the figures in AT_TARGET_DD's order."""
-    if conn.execute("PRAGMA user_version").fetchone()[0] >= MIGRATIONS[-1][0]:
-        return MIGRATIONS[-1][0]
-    conn.create_function("k_ratio", 2, lambda days, blob: number(k_ratio(_values(days, blob))), deterministic=True)
-    conn.create_function("at_target_dd", 5, _at_target_dd_sql, deterministic=True)
-    with write(conn):
-        version = conn.execute("PRAGMA user_version").fetchone()[0]     # another process may have applied it meanwhile
-        for step, sql in MIGRATIONS:
-            if step > version:
-                LOG.info("database schema %d -> %d (%s)", version, step, sql.name)
-                for statement in _statements(sql.read_text()):
-                    conn.execute(statement)
-                conn.execute(f"PRAGMA user_version = {step}")
-                version = step
-    return version
+def _refuse_another_schema(conn: sqlite3.Connection, path: Path) -> None:
+    """Close a file whose schema is not this code's: its tables are not the ones the code reads and writes."""
+    version = conn.execute("PRAGMA user_version").fetchone()[0]
+    if version != SCHEMA_VERSION:
+        conn.close()
+        raise RuntimeError(f"{path} is at schema {version}, this code reads and writes schema {SCHEMA_VERSION} "
+                           f"({SCHEMA.name}): bring the file to it once, or open another")
 
 
 def _statements(script: str) -> list[str]:
@@ -357,13 +342,6 @@ def _scaled(values, borrowing, multiple, borrowed):
         elif equity / peak - 1.0 < worst:
             worst = equity / peak - 1.0
     return worst, equity
-
-
-def _at_target_dd_sql(first_day: str, days: int, blob: bytes, avg_gross: float | None,
-                      time_in_market: float | None) -> str:
-    """`at_target_dd` of a series as this file keeps it, for a schema step's SQL: its figures as a JSON array."""
-    figures = at_target_dd(decode_series(first_day, days, blob), avg_gross, time_in_market)
-    return json.dumps([figures[k] for k in AT_TARGET_DD])
 
 
 # ---------------------------------------------------------------------------------------------------- what trades say

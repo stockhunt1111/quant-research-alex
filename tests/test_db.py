@@ -54,6 +54,13 @@ def test_an_evaluation_saved_comes_back_as_it_was_computed(conn, monkeypatch):
     # the K-ratio of each record kept, worked out from the series saved with it
     assert got["k_ratio"] == pytest.approx(db.k_ratio(e.oos_daily), rel=1e-12)
     assert db.figures(conn, rid, "in_sample")["k_ratio"] == pytest.approx(db.k_ratio(e.is_daily), rel=1e-12)
+    # and its average month at the target's drawdown, with the multiple and the last five years', from the same series
+    for scope, daily in (("out_of_sample", e.oos_daily), ("in_sample", e.is_daily)):
+        f = db.figures(conn, rid, scope)
+        want = db.at_target_dd(daily, f["avg_gross"], f["time_in_market"])
+        assert want["at_target_dd"] is not None, scope
+        assert [f[k] for k in db.AT_TARGET_DD] == [None if want[k] is None else pytest.approx(want[k], rel=1e-12)
+                                                  for k in db.AT_TARGET_DD], scope
     assert [w["params"] for w in db.windows(conn, rid)] == [json.loads(p) for p in e.folds["params"]]
     assert db.monte_carlo(conn, rid) == e.monte_carlo
     t = db.trades(conn, rid)
@@ -158,7 +165,7 @@ def test_writers_in_many_processes_opening_a_new_file_at_once_all_get_their_resu
         p.join(120)
     assert [p.exitcode for p in procs] == [0] * 8
     c = sqlite3.connect(path)
-    assert c.execute("PRAGMA user_version").fetchone()[0] == db.MIGRATIONS[-1][0]
+    assert c.execute("PRAGMA user_version").fetchone()[0] == db.SCHEMA_VERSION
     assert c.execute("SELECT count(*) FROM result").fetchone()[0] == 40
     assert c.execute("SELECT count(DISTINCT seq) FROM change").fetchone()[0] == 40
     c.close()
@@ -223,9 +230,21 @@ def test_a_record_that_lost_everything_or_is_too_short_has_no_k_ratio_and_a_flat
     assert db.k_ratio(_days(np.zeros(90))) == 0.0                            # never held a position: as its Sharpe
 
 
-def test_results_saved_under_the_first_schema_get_the_k_ratio_of_the_series_kept_with_them(tmp_path, monkeypatch):
-    """A file of the schema before the K-ratio is brought forward with each record's K-ratio worked out from its kept
-    series, the value the writer gives a result saved now; a scope without a kept series has none."""
+def test_a_file_at_another_schema_is_refused_by_a_writer_and_a_reader(tmp_path):
+    path = tmp_path / "app.sqlite"
+    db.connect(path).close()                                        # a new file: made at the code's schema
+    c = sqlite3.connect(path)
+    assert c.execute("PRAGMA user_version").fetchone()[0] == db.SCHEMA_VERSION
+    c.execute(f"PRAGMA user_version = {db.SCHEMA_VERSION - 1}")       # a file of the schema before
+    c.close()
+    for readonly in (False, True):
+        with pytest.raises(RuntimeError, match=f"is at schema {db.SCHEMA_VERSION - 1}, "):
+            db.connect(path, readonly=readonly)
+
+
+def test_a_record_kept_with_its_series_has_its_k_ratio_and_one_kept_without_has_none(tmp_path, monkeypatch):
+    """The writer works a record's K-ratio out from the series it saves with it: an instrument alone's in-sample record,
+    whose series is not kept, has none; each buy & hold has its own."""
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "app.sqlite")
     alone = _outcome("spot:AAA", seed=4)
     alone.in_sample = db.Figures(metrics.core(alone.oos))           # an instrument alone: its in-sample series not kept
@@ -236,21 +255,11 @@ def test_results_saved_under_the_first_schema_get_the_k_ratio_of_the_series_kept
     db.save_outcomes(c, [alone, listed], description="", code=CODE, fill="next_open")
     written = {(r[0], r[1]): r[2] for r in c.execute("SELECT result_id, scope, k_ratio FROM result_figures")}
     held = {r[0]: r[1] for r in c.execute("SELECT id, k_ratio FROM benchmark")}
-    for table in ("result_figures", "benchmark"):                   # the file as the first schema left it
-        c.execute(f"ALTER TABLE {table} DROP COLUMN k_ratio")
-        for k in db.AT_TARGET_DD:
-            c.execute(f"ALTER TABLE {table} DROP COLUMN {k}")
-    c.execute("DROP TABLE instrument_tries")
-    c.execute("PRAGMA user_version = 1")
-    c.close()
-    c = db.connect()
-    assert c.execute("PRAGMA user_version").fetchone()[0] == db.MIGRATIONS[-1][0] == 6
-    assert {(r[0], r[1]): r[2] for r in c.execute("SELECT result_id, scope, k_ratio FROM result_figures")} == written
-    assert {r[0]: r[1] for r in c.execute("SELECT id, k_ratio FROM benchmark")} == held
     aaa, bbb = db.result_id(c, "ibs", "crypto_mcap10", "1d", "spot:AAA"), db.result_id(c, "ibs", "crypto_mcap10", "1d",
                                                                                          "spot:BBB")
     assert written[aaa, "in_sample"] is None and None not in (written[aaa, "out_of_sample"], written[bbb, "in_sample"])
     assert len(held) == 2 and None not in held.values()
+    c.close()
 
 
 # ---------------------------------------------------------------------------------------------------- at the target's drawdown
@@ -327,72 +336,13 @@ def test_a_record_without_a_position_has_nothing_to_scale():
     assert db.at_target_dd(None, 1.0, 1.0) == dict.fromkeys(db.AT_TARGET_DD)
 
 
-def test_results_saved_before_the_figure_get_from_their_kept_series_what_the_writer_saves(conn, monkeypatch):
-    _evaluated(monkeypatch, monte_carlo=False, robustness=False)
-    read = f"SELECT scope, {', '.join(db.AT_TARGET_DD)} FROM result_figures ORDER BY scope"
-    saved = [tuple(r) for r in conn.execute(read)]
-    assert [r[0] for r in saved] == ["in_sample", "out_of_sample"] and all(r[1] is not None for r in saved)
-    step = next(v for v, sql in db.MIGRATIONS if sql.name == "db_schema_3.sql")
-    with db.write(conn):                         # the file as it was before the step (buy & hold's came later)
-        for k in db.AT_TARGET_DD:
-            conn.execute(f"ALTER TABLE result_figures DROP COLUMN {k}")
-            conn.execute(f"ALTER TABLE benchmark DROP COLUMN {k}")
-        _before_single_assets_tries(conn)
-        conn.execute(f"PRAGMA user_version = {step - 1}")
-    assert db.migrate(conn) == db.MIGRATIONS[-1][0]
-    assert [tuple(r) for r in conn.execute(read)] == saved
-    with db.write(conn):                         # a file of the step with a ceiling, whose figures differ: worked out again
-        conn.execute("UPDATE result_figures SET at_target_dd = 0.0, at_target_dd_multiple = 2.0")
-        for k in db.AT_TARGET_DD:
-            conn.execute(f"ALTER TABLE benchmark DROP COLUMN {k}")
-        _before_single_assets_tries(conn)
-        conn.execute("PRAGMA user_version = 3")
-    assert db.migrate(conn) == db.MIGRATIONS[-1][0]
-    assert [tuple(r) for r in conn.execute(read)] == saved
-
-
-def test_buy_and_holds_saved_before_their_figure_get_from_their_kept_series_what_the_writer_saves(conn, monkeypatch):
-    _evaluated(monkeypatch, monte_carlo=False, robustness=False)
-    read = f"SELECT id, {', '.join(db.AT_TARGET_DD)} FROM benchmark ORDER BY id"
-    saved = [tuple(r) for r in conn.execute(read)]
-    assert saved and all(r[1] is not None and r[2] is not None for r in saved)
-    step = next(v for v, sql in db.MIGRATIONS if sql.name == "db_schema_5.sql")
-    with db.write(conn):                         # the file as it was before the step
-        for k in db.AT_TARGET_DD:
-            conn.execute(f"ALTER TABLE benchmark DROP COLUMN {k}")
-        _before_single_assets_tries(conn)
-        conn.execute(f"PRAGMA user_version = {step - 1}")
-    assert db.migrate(conn) == db.MIGRATIONS[-1][0]
-    assert [tuple(r) for r in conn.execute(read)] == saved
-
-
-def _before_single_assets_tries(conn) -> None:
-    """The file as it was before the single assets' tries: its tries of the lists and picks only."""
-    conn.execute("DROP TABLE instrument_tries")
-    conn.execute("CREATE TABLE tries_5 (id INTEGER PRIMARY KEY, family TEXT NOT NULL CHECK (family IN ('lists', "
-                 "'picks')), computed_at TEXT NOT NULL, covers TEXT NOT NULL, saved INTEGER NOT NULL, independent REAL "
-                 "NOT NULL, best_95 REAL NOT NULL, code_sha TEXT NOT NULL) STRICT")
-    conn.execute("INSERT INTO tries_5 SELECT * FROM tries WHERE family IN ('lists', 'picks')")
-    conn.execute("DROP TABLE tries")
-    conn.execute("ALTER TABLE tries_5 RENAME TO tries")
-
-
-def test_tries_kept_before_the_single_assets_count_stay_and_the_file_takes_the_single_assets_count(conn):
+def test_the_single_assets_count_keeps_each_instruments_own_tries_beside_the_lists_count(conn):
     first = db.save_tries(conn, "lists", db.results_fingerprint(conn, "lists"), 3, 2.5, 2.1, "abc")
-    step = next(v for v, sql in db.MIGRATIONS if sql.name == "db_schema_6.sql")
-    with db.write(conn):
-        _before_single_assets_tries(conn)
-        conn.execute(f"PRAGMA user_version = {step - 1}")
-    with pytest.raises(sqlite3.IntegrityError):              # the file before the step: no such family
-        with db.write(conn):
-            conn.execute("INSERT INTO tries (family, computed_at, covers, saved, independent, best_95, code_sha) "
-                         "VALUES ('assets', '', '', 0, 0, 0, '')")
-    assert db.migrate(conn) == db.MIGRATIONS[-1][0]
-    assert tuple(db.latest_tries(conn, "lists"))[:2] == (first, "lists")
     tid = db.save_tries(conn, "assets", db.results_fingerprint(conn, "assets"), 5, 4.2, 2.6, "abc",
                         instruments={"td:SPY": (3, 2.4, 2.2), "td:QQQ": (2, 1.9, 2.0)})
     assert {r["instrument_id"]: (r["saved"], r["independent"], r["best_95"]) for r in db.instrument_tries(conn, tid)} \
         == {"td:SPY": (3, 2.4, 2.2), "td:QQQ": (2, 1.9, 2.0)}
+    assert tuple(db.latest_tries(conn, "lists"))[:2] == (first, "lists")
 
 
 def _import(root, path, monkeypatch):

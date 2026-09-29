@@ -3,7 +3,6 @@
     python -m strategy_lab run sma_cross --universe etf_core --tf 1d
     python -m strategy_lab run sma_cross ibs --universe crypto_top10 --tf 4h 1d     # strategies by name: strategies/<name>.py
     python -m strategy_lab board                  # the research board, from the app's database
-    python -m strategy_lab db migrate             # create db/app.sqlite or bring it to the current schema
     python -m strategy_lab db judge               # work out the luck bars (the tries) over the list results and the
                                                   # single assets' now
     python -m strategy_lab db lists               # the lists' sizes and costs and the instruments' liquidity, from bars
@@ -36,7 +35,7 @@ def main() -> None:
                    help="allow lists outside strategy_lab.lists: only when the user asks for them")
     sub.add_parser("board", help="print the research board from the app's database")
     d = sub.add_parser("db", help="the app's database")
-    d.add_argument("what", choices=["migrate", "judge", "lists", "pick"])
+    d.add_argument("what", choices=["judge", "lists", "pick"])
     args = ap.parse_args()
     if args.cmd == "run":
         if not args.outside_lists:
@@ -66,11 +65,9 @@ def main() -> None:
             elif args.what == "lists":
                 from strategy_lab import catalog
                 catalog.refresh(conn)
-            elif args.what == "pick":
+            else:
                 from strategy_lab import strategy_pick
                 strategy_pick.pick_all(conn)
-            else:
-                print(f"{db.DB_PATH}: schema {conn.execute('PRAGMA user_version').fetchone()[0]}")
         finally:
             conn.close()
 

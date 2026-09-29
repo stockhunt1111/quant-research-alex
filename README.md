@@ -412,8 +412,8 @@ and without it, and writes reports/peer_check.md.
   known. A longer record had more years for its worst drawdown to come (at a Sharpe near 1, 28 years draw down about
   1.6 times as deep as 5, by Magdon-Ismail and Atiya's expected maximum drawdown, 2004): on hover the page shows beside
   the figure of all the years the same over the record's last five years alone, the years every research list has out
-  of sample (its crypto lists' records begin in 2021). A result saved before the figure gets it from its kept series
-  (schema steps 3 and 4). Buy & hold's own figure stands beside it, on the row's hover and in the popup's metrics (the
+  of sample (its crypto lists' records begin in 2021). The database's writer works it out from the series it saves, as
+  it does the K-ratio. Buy & hold's own figure stands beside it, on the row's hover and in the popup's metrics (the
   index's too): holding, fully invested, scaled the same way, so that the two compare at one drawdown (`rsi2_connors` on
   stocks Top-50 4h +0.90% a month against holding's +0.52%, which reaches -10% with 28% of the money in the list). The
   money test (`vs B&H / yr`) compares at equal volatility instead, sized from the trailing 90 days and at most 2x, as
@@ -433,9 +433,8 @@ and without it, and writes reports/peer_check.md.
   much as the Sharpe does (rank correlation 0.91), at a median 0.98 times it where the Sharpe is above 0.3, and parts
   from it where a record earned in bursts: `ibs_ml_sized` on the spot commodities 1h has a Sharpe of 3.31 and a
   K-ratio of 0.64, `tsmom` on stocks Top-3 1h 1.27 and 1.50. The writer works it out from the series it saves, as it
-  works out the trades' profit factor (no evaluation reads it, so no result's stamp covers it); the results saved
-  before got it from their kept series (schema step 2). None for an account that lost everything, whose log equity
-  ends there (4 single-asset `tsmom` shorts on coins).
+  works out the trades' profit factor (no evaluation reads it, so no result's stamp covers it). None for an account
+  that lost everything, whose log equity ends there (4 single-asset `tsmom` shorts on coins).
 * **Monte Carlo** — stationary block bootstrap of the OOS daily returns of a result that makes money: P5/P50/P95 of
   the target figures.
 * **Makes money** means a positive Sharpe AND a positive compounded return: a positive Sharpe can still lose money
