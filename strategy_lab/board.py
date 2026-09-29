@@ -21,7 +21,8 @@ they cover (`refresh_tries`): a reader takes the kept count while it still cover
 since is judged against the last count until it is worked out again. A strategy run on an instrument alone is judged
 the same way (`robustness(alone=True)`): against the tries on its instrument (`refresh_asset_tries`, kept with the
 tries on every instrument at once, which are shown beside), and on the other instruments of its market (`peers`)
-instead of a list's names and neighbouring lists.
+instead of a list's names and neighbouring lists. A list's result and an instrument alone's are both judged on their
+record without its best calendar year (`best_year`), worked out from the record when it is read.
 """
 from __future__ import annotations
 
@@ -35,7 +36,7 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from strategy_lab import db, lists, log, provenance, significance
+from strategy_lab import db, lists, log, metrics, provenance, significance
 from strategy_lab.config import SEED
 from strategy_lab.walkforward import MIN_PEERS, PEER_SHARE
 
@@ -357,20 +358,26 @@ def _as_independent(expected_best: float, k: int) -> float:
 
 # The pass rule of each robustness check (strategy_lab.robustness measures them in the evaluation; they are judged here,
 # so a threshold can change without a re-run): the deflated Sharpe and random timing's bars are significance's
-KEEP = 0.5              # a neighbouring configuration, list or model seed keeps at least half of the Sharpe
+KEEP = 0.5              # a neighbouring configuration, list or model seed keeps at least half of the Sharpe, a record
+                        # without its best year at least half of its average month
 PBO_MAX = 0.5
 ERAS_MIN = 0.60         # the Minerva tester's bar of consistency across eras
 NAMES_MIN = 0.5
 RULE_T_MIN = 2.0        # a model beats the rule it grades by two standard errors of the difference
+REST_DAYS = 365         # a record without its best year has a year of days left at least, or it is too short to judge
 CHECKS = {"luck": "Sharpe beyond luck", "vs_hold": "Beats buy & hold beyond luck", "timing": "Timing beats random",
           "pbo": "Not overfitted (PBO)", "plateau": "Parameter plateau", "eras": "Stable across eras",
-          "delay": "A bar later", "costs": "Costs ×3", "names": "Most names make money",
-          "peers": "Works on most of its market", "neighbour_lists": "Neighbouring lists",
-          "seeds": "Model: other seeds", "vs_rule": "Model beats the plain rule"}
+          "best_year": "Without its best year", "delay": "A bar later", "costs": "Costs ×3",
+          "names": "Most names make money", "peers": "Works on most of its market",
+          "neighbour_lists": "Neighbouring lists", "seeds": "Model: other seeds", "vs_rule": "Model beats the plain rule"}
 # an instrument alone has one name and no list around it (`robustness.LIST_ONLY`): it is judged instead on the other
 # instruments of its market, as a rule's choice on peers is (`walkforward.MIN_PEERS`, `PEER_SHARE`)
 LIST_ONLY = ("names", "neighbour_lists")
 ALONE_ONLY = ("peers",)
+# worked out when a result is read, not measured in its evaluation, so none of them is kept with it (db.CHECKS): whether
+# the strategy makes money on the other instruments of its market, from their results (`peers`), and its record without
+# its best calendar year, from the record (`best_year`)
+WHEN_READ = ("peers", "best_year")
 STATES = ("passed", "failed", "too_short", "not_applicable", "not_computed")
 TOP_N = re.compile(r"_top(\d+)$")
 
@@ -378,6 +385,32 @@ TOP_N = re.compile(r"_top(\d+)$")
 def checks_of(alone: bool) -> list[str]:
     """The checks of a list's result, or of a strategy's on an instrument alone."""
     return [c for c in CHECKS if c not in (LIST_ONLY if alone else ALONE_ONLY)]
+
+
+def best_year(daily: pd.Series) -> dict:
+    """The `best_year` check of a record (its daily returns): its best calendar year (of its UTC days), what that year
+    made, and the average month of the days left beside the whole record's, both as Avg / month counts them
+    (`metrics.average_month`, each over its own days). A record that made its money in one year and little in the others
+    keeps little of its average month without it; one that earns year after year keeps most. Too short to judge with
+    fewer than REST_DAYS days left."""
+    d = daily.dropna().sort_index()
+    values = d.to_numpy(dtype=np.float64)
+    years = d.index.year.to_numpy()
+    if not len(values):
+        LOG.debug("an empty record: no year to leave out")
+        return {"too_short": "no day out-of-sample"}
+    starts = np.flatnonzero(np.r_[True, years[1:] != years[:-1]])        # a year's days are a run of the sorted days
+    growth = np.multiply.reduceat(1.0 + values, starts)
+    k = int(np.argmax(growth))
+    best = int(years[starts[k]])
+    rest = values[years != best]
+    if len(rest) < REST_DAYS:
+        LOG.debug("a record of %d days has %d besides its best year %d: too short to judge without it", len(values),
+                  len(rest), best)
+        return {"too_short": f"{len(rest)} days out-of-sample besides its best year {best}, {REST_DAYS} needed"}
+    return {"year": best, "year_return": float(growth[k] - 1.0),
+            "avg_monthly": metrics.average_month(float(np.prod(1.0 + values)), len(values)),
+            "rest_avg_monthly": metrics.average_month(float(np.prod(1.0 + rest)), len(rest))}
 
 
 def peers(results: pd.DataFrame) -> dict[int, dict]:
@@ -434,6 +467,10 @@ def _yr(v) -> str:
     return "—" if v is None or not np.isfinite(v) else f"{v * 100:+.1f}%/yr"
 
 
+def _mo(v) -> str:
+    return "—" if v is None or not np.isfinite(v) else f"{v * 100:+.2f}%"
+
+
 def _earns(sharpe, cagr) -> bool:
     """Makes money: a positive Sharpe and a positive compounded return (a positive Sharpe can still lose money once
     large swings compound)."""
@@ -483,6 +520,10 @@ def _judged(cid: str, m: dict, sharpe: float, n_tries: Tries, deflated: dict,
                 and float(np.median([x["sharpe"] for x in near])) >= KEEP * m["sharpe"])
     if cid == "eras":
         return f"ρ {m['rho']:.2f} ({len(m['sharpes'])} windows)", f"ρ ≥ {ERAS_MIN:.2f}", m["rho"] >= ERAS_MIN
+    if cid == "best_year":
+        avg = m["avg_monthly"]
+        return (f"without {m['year']} ({m['year_return']:+.0%}): {_mo(m['rest_avg_monthly'])} a month vs {_mo(avg)}",
+                f"≥ ½ × {avg * 100:.2f}%", m["rest_avg_monthly"] >= KEEP * avg)
     if cid in ("delay", "costs"):
         at = f"at ×{m['multiple']:g}: " if cid == "costs" else ""
         return (f"{at}Sharpe {_s(m['sharpe'])}, {_yr(m['cagr'])}", "Sharpe and return > 0",
@@ -511,7 +552,8 @@ def _judged(cid: str, m: dict, sharpe: float, n_tries: Tries, deflated: dict,
 def robustness(card: dict, daily: pd.Series, n_tries: Tries, deflated: dict | None = None, *, alone: bool = False,
                every: tuple[Tries, dict] | None = None) -> Robustness | None:
     """A result's robustness checks, judged: None for a result that loses money out-of-sample (nothing is checked); a
-    result saved by code older than the checks has every check not computed. `alone`: a strategy on an instrument
+    result saved by code older than the checks has every check not computed. `daily`: its out-of-sample record, which
+    `best_year` is worked out from (None: not read, that check not computed). `alone`: a strategy on an instrument
     alone, its checks `checks_of(alone=True)` and `n_tries` the tries on its instrument; `every`: see `_judged`."""
     if "robustness" not in card:
         LOG.info("%s on %s %s was saved before its robustness was measured: re-run it", card.get("strategy"),
@@ -521,13 +563,17 @@ def robustness(card: dict, daily: pd.Series, n_tries: Tries, deflated: dict | No
         measured = card["robustness"]
         if measured is None:
             return None
+        if daily is not None and "best_year" not in measured:
+            measured = measured | {"best_year": best_year(daily)}
     deflated = deflated if deflated is not None else significance.deflated(daily, n_tries.independent)
     sharpe = card["out_of_sample"]["sharpe"]
     out = []
     for cid in checks_of(alone):
         label, m = CHECKS[cid], measured.get(cid)
         if m is None:
-            out.append(Check(cid, label, "not measured in this evaluation", "", "not_computed"))
+            why = ("its out-of-sample record was not read" if cid == "best_year" and "robustness" in card
+                   else "not measured in this evaluation")
+            out.append(Check(cid, label, why, "", "not_computed"))
         elif "na" in m:
             out.append(Check(cid, label, m["na"], "", "not_applicable"))
         elif "too_short" in m:

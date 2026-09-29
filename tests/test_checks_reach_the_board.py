@@ -15,7 +15,8 @@ def test_an_evaluations_robustness_checks_reach_the_board(tmp_path, monkeypatch)
     conn = db.connect()
     measured = db.measures(conn, db.result_id(conn, "rsi2_connors", "us_stocks_top10", "1d"))
     conn.close()
-    assert set(board.checks_of(alone=False)) - set(measured) == set()   # every check was measured or said why not
+    # every check was measured or said why not, but what is worked out when the result is read
+    assert set(board.checks_of(alone=False)) - set(measured) == set(board.WHEN_READ) & set(board.checks_of(alone=False))
     r = next(board.collect().itertuples(index=False))
     checks = json.loads(r.robustness_checks)
     assert [c[0] for c in checks] == board.checks_of(alone=False)
@@ -33,9 +34,10 @@ def test_a_threshold_decides_a_check_and_the_count_leaves_out_what_does_not_appl
     states = {c.id: c.state for c in got.checks}
     assert (states["luck"], states["timing"], states["pbo"], states["eras"], states["names"]) == (
         "passed", "failed", "not_applicable", "too_short", "passed")
-    assert all(states[k] == "not_computed" for k in ("vs_hold", "plateau", "delay", "costs", "neighbour_lists",
-                                                    "seeds", "vs_rule"))
-    assert str(got) == "2/4" and got.not_computed == 7            # too short counts against, n/a and not measured out
+    assert all(states[k] == "not_computed" for k in ("vs_hold", "plateau", "best_year", "delay", "costs",
+                                                    "neighbour_lists", "seeds", "vs_rule"))
+    assert "not read" in {c.id: c for c in got.checks}["best_year"].value           # no record given to work it out
+    assert str(got) == "2/4" and got.not_computed == 8            # too short counts against, n/a and not measured out
     assert board.robustness({"out_of_sample": {"sharpe": -0.1}, "robustness": None}, None, 100) is None
     older = board.robustness({"out_of_sample": {"sharpe": 0.8}}, None, 100, {"prob": 0.99, "noise_bar": 0.5})
     assert str(older) == "0/0" and older.not_computed == len(board.checks_of(alone=False))   # saved before the checks

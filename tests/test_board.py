@@ -92,3 +92,36 @@ def test_an_instrument_alone_is_judged_on_how_many_of_the_others_of_its_run_make
     card["robustness"]["peers"] = {"others": 4, "positive": 1, "share": 0.25}
     assert {c.id: c.state for c in board.robustness(card, None, own, {"prob": 0.97, "noise_bar": 0.8},
                                                     alone=True).checks}["peers"] == "failed"
+
+
+def _record(years: dict[int, tuple[float, int]]) -> pd.Series:
+    """A daily record whose calendar years each compound to a return over their first days (year -> (return, days)),
+    the same rate every day of a year."""
+    parts = [pd.Series((1.0 + r) ** (1.0 / n) - 1.0, index=pd.date_range(f"{y}-01-01", periods=n, freq="D", tz="UTC"))
+             for y, (r, n) in years.items()]
+    return pd.concat(parts)
+
+
+def test_a_record_that_made_its_money_in_one_year_keeps_little_of_its_average_month_without_it():
+    # the middle year doubles the account and the other two add 2% each: 730 days, 24 months of 1/12 of a year, are
+    # left without it, of 1095 days, 36 months, in all
+    daily = _record({2021: (0.02, 365), 2022: (1.0, 365), 2023: (0.02, 365)})
+    got = board.best_year(daily)
+    assert got["year"] == 2022 and abs(got["year_return"] - 1.0) < 1e-9
+    assert abs(got["rest_avg_monthly"] - ((1.02 * 1.02) ** (1 / 24) - 1.0)) < 1e-12
+    assert abs(got["avg_monthly"] - ((2.0 * 1.02 * 1.02) ** (1 / 36) - 1.0)) < 1e-12
+    card = {"out_of_sample": {"sharpe": 1.0}, "robustness": {}}
+    check = {c.id: c for c in board.robustness(card, daily, 100, {"prob": 0.99, "noise_bar": 0.5}).checks}["best_year"]
+    assert (check.state, check.value, check.threshold) == (
+        "failed", "without 2022 (+100%): +0.17% a month vs +2.06%", "≥ ½ × 2.06%")
+
+
+def test_a_record_that_earns_year_after_year_keeps_its_average_month_and_a_short_one_is_not_judged():
+    steady = board.best_year(_record({2021: (0.2, 365), 2022: (0.2, 365), 2023: (0.2, 365)}))
+    assert abs(steady["rest_avg_monthly"] - (1.2 ** (1 / 12) - 1.0)) < 1e-12            # 20% a year is 1.53% a month
+    assert abs(steady["rest_avg_monthly"] - steady["avg_monthly"]) < 1e-12
+    card = {"out_of_sample": {"sharpe": 1.0}, "robustness": {"best_year": steady}}
+    assert {c.id: c.state for c in board.robustness(card, None, 100, {"prob": 0.99, "noise_bar": 0.5}).checks}[
+        "best_year"] == "passed"
+    short = board.best_year(_record({2025: (0.3, 365), 2026: (0.1, 200)}))             # 200 days left without 2025
+    assert short == {"too_short": "200 days out-of-sample besides its best year 2025, 365 needed"}

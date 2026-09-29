@@ -476,20 +476,25 @@ and without it, and writes reports/peer_check.md.
      half its Sharpe at the median; not for a single configuration;
   6. stable across eras: the Minerva tester's consistency over two-year windows (a last one of a year counts) at
      least 0.60, three windows needed;
-  7. a bar later: still makes money with every position taken a bar later, on the same choices;
-  8. costs x3: still makes money at three times the modelled costs (a spot quote of a commodity: three times the
+  7. without its best year: the record without its best calendar year keeps at least half of its average month (both
+     compounded as Avg / month is, each over its own days; a year left at least), so a strategy that made its money
+     in one year and little in the others shows it, where the Sharpe of each era does not (ml_direction on ADA 1h:
+     +3.28% a month, +1.33% without 2021's +323%; its eras' Sharpes 2.54, 1.82 and 0.45 pass 6); worked out from the
+     record when it is read (`board.best_year`), not in the evaluation;
+  8. a bar later: still makes money with every position taken a bar later, on the same choices;
+  9. costs x3: still makes money at three times the modelled costs (a spot quote of a commodity: three times the
      spreads its broker quoted), a CME future at 10bp a side (thin intraday quotes its flat 2bp understates);
-  9. most names make money: at least half of the names it traded made money on their trades;
-  10. neighbouring lists: on a Top-N list, Top-(N-d) and Top-(N+d) (d = 20% of N rounded to 5, at least 5 and at
+  10. most names make money: at least half of the names it traded made money on their trades;
+  11. neighbouring lists: on a Top-N list, Top-(N-d) and Top-(N+d) (d = 20% of N rounded to 5, at least 5 and at
       most half of N: 2/4, 5/15, 40/60, 80/120) make money and keep half its Sharpe; evaluated inside the result's
       evaluation, never saved;
-  11. with a model, other seeds: seeds 1-4 of its model make money and keep half its Sharpe;
-  12. with a model, beats the plain rule: t at least 2 over the same rule without its model.
+  12. with a model, other seeds: seeds 1-4 of its model make money and keep half its Sharpe;
+  13. with a model, beats the plain rule: t at least 2 over the same rule without its model.
 
   A strategy on an instrument alone (Research's Assets, `per_asset`) is checked the same way, in its own evaluation,
-  but for 9 and 10, which are a list's: it trades one name and has no list around it. Its luck (1) and its t against
-  holding the instrument (2) are judged against the tries on its instrument, and instead of 9 and 10:
-  13. works on most of its market: of the other instruments of its run (the same strategy and timeframe on the rest of
+  but for 10 and 11, which are a list's: it trades one name and has no list around it. Its luck (1) and its t against
+  holding the instrument (2) are judged against the tries on its instrument, and instead of 10 and 11:
+  14. works on most of its market: of the other instruments of its run (the same strategy and timeframe on the rest of
       its list) at least half make money, three at least scored, as choosing on peers asks (`walkforward.MIN_PEERS`,
       `PEER_SHARE`): judged when read, from their results (`board.peers`), so a rule that pays on one chart only by
       luck shows it.

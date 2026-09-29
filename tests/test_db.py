@@ -214,8 +214,9 @@ def test_the_figures_kept_are_the_keys_the_metrics_return():
     assert tuple(metrics.trade_stats(trades, 12)) == db.TRADE_STATS
     assert tuple(metrics.exposure_stats(pd.Series([0.5, 0.0], index=d.index[:2]))) == db.EXPOSURE
     assert tuple(db.at_target_dd(d, 1.0, 1.0)) == db.AT_TARGET_DD
-    # every check an evaluation measures is kept; an instrument alone's peers are judged from their results when read
-    assert db.CHECKS == tuple(c for c in board.CHECKS if c not in board.ALONE_ONLY)
+    # every check an evaluation measures is kept; an instrument alone's peers (from their results) and a record without
+    # its best year (from the record) are worked out when a result is read
+    assert db.CHECKS == tuple(c for c in board.CHECKS if c not in board.WHEN_READ)
     assert set(metrics.targets({})) == set(db.TARGETS)
     c = db.connect(Path(":memory:"))
     assert {r[1] for r in c.execute("PRAGMA table_info(result_figures)")} == {"result_id", "scope", *db.FIGURES}
