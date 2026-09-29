@@ -16,9 +16,12 @@ class LookAhead(AssertionError):
     pass
 
 
-def check(strategy: Strategy, panel: Panel, params: dict | None = None, cuts=(0.5, 0.8), tol: float = 1e-10) -> None:
+def check(strategy: Strategy, panel: Panel, params: dict | None = None, cuts=(0.5, 0.8), tol: float = 1e-10) -> int:
+    """Raises LookAhead where a position differs; returns how many positions held before the cuts it compared (none:
+    the strategy held nothing that early, and the check proved nothing)."""
     params = params if params is not None else strategy.configs()[0]
     full = strategy.target(panel, params)
+    compared = 0
     for frac in cuts:
         cut = panel.index[int(len(panel.index) * frac)]
         part = strategy.target(panel.truncate(cut), params)
@@ -30,11 +33,13 @@ def check(strategy: Strategy, panel: Panel, params: dict | None = None, cuts=(0.
             first = full.loc[:cut].index[rows.min()]
             raise LookAhead(f"{strategy.name} {params}: positions change when data after {cut} is removed "
                             f"(first at {first}, {int(bad.sum())} cells, e.g. {full.columns[cols[0]]})")
+        compared += int(np.count_nonzero(np.nan_to_num(a)))
+    return compared
 
 
-def check_all_configs(strategy: Strategy, panel: Panel, **kw) -> None:
-    for cfg in strategy.configs():
-        check(strategy, panel, cfg, **kw)
+def check_all_configs(strategy: Strategy, panel: Panel, configs: list[dict] | None = None, **kw) -> int:
+    """`check` of every configuration (of `configs` when given); returns the positions compared over all of them."""
+    return sum(check(strategy, panel, cfg, **kw) for cfg in (strategy.configs() if configs is None else configs))
 
 
 def discover(modules) -> list[Strategy]:

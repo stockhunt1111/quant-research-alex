@@ -136,8 +136,9 @@ def test_a_stop_filled_inside_a_bar_pays_the_median_spread_its_hours_quoted():
         inside = np.median((opening[24 * k:24 * k + 24] + closing[24 * k:24 * k + 24]) / 2)
         filled = abs(res.weights["td:XPT/USD"].iloc[k] - res.weights["td:XPT/USD"].iloc[k - 1]) * (
             0.5 * opening[24 * k] / p.open["td:XPT/USD"].iloc[k])
-        assert res.cost.iloc[k] == pytest.approx(filled + res.exposure.iloc[k] * 0.5 * inside
-                                                 / p.close["td:XPT/USD"].iloc[k], rel=1e-12)
+        sold = res.exposure.iloc[k] * res.exits["td:XPT/USD"].iloc[k] / p.open["td:XPT/USD"].iloc[k]   # at the stop
+        assert res.cost.iloc[k] == pytest.approx(filled + sold * 0.5 * inside / p.close["td:XPT/USD"].iloc[k],
+                                                 rel=1e-12)
 
 
 def test_a_fill_at_the_close_pays_the_spread_quoted_at_that_close():

@@ -36,7 +36,7 @@ import pandas as pd
 
 from strategy_lab import db, lists, log, metrics
 from strategy_lab.data.bars import Panel, dividends_version, load_panel, stored_version
-from strategy_lab.engine.hold import buy_and_hold
+from strategy_lab.engine.hold import bought_on, buy_and_hold
 
 LOG = log.get("market_index")
 # the index is held on its daily bars whatever a record's timeframe: its days come out the same (SPY's daily returns
@@ -107,8 +107,7 @@ def daily(index: Index, days: pd.DatetimeIndex, fill: str | None) -> pd.Series |
         except FileNotFoundError as e:
             _warn_not_stored(index.id, str(e))
             return None
-        live = panel.started
-        live.loc[live.index < days[0]] = False
+        live = bought_on(panel.started, days[0])
         if not live[index.id].any():
             LOG.warning("%s has no bar from %s on: no index beside a record that starts then", index.id,
                         days[0].date())

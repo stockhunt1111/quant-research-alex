@@ -7,8 +7,9 @@
 Each strategy is one file in `strategies/`, named after it, so that it can be read, or handed to another engine's
 developer, on its own. The building blocks several of them share are here: `hold_between` (long from an entry
 condition until an exit condition), `with_short` (a rule's long side and its mirror, the short side, as a grid
-switch), `rebalanced` (a book or a position decided once a month, week or n days), `long_short` (a ranking into a
-long/short book) and `bars_in` (a span its source gives in days or months, as bars of the timeframe run: a rule's
+switch), `rebalanced` (a book or a position decided once a month, week or n days), `ends` and `long_short` (a
+ranking's two ends, and a ranking into a long/short book), `as_of` and `calendar_months` (a panel's lookback in
+calendar time) and `bars_in` (a span its source gives in days or months, as bars of the timeframe run: a rule's
 indicator periods are bars, as on any chart, but a 12-month return or a 200-day average is the same time on 1h, 4h
 and 1d).
 
@@ -89,6 +90,7 @@ class Strategy:
     grade: Callable | None = None   # a rule's: (panel, wanted, live, **grade params) -> wanted
     prepare: Callable | None = None     # (panel, configs, member): work the grid shares, done before it (see `rule`)
     exposure: bool = False          # a rule's position is a holding kept while listed, not a trade (see `rule`)
+    model: bool = False             # a rule's function fits a model drawing with its module's SEED (see `rule`)
     book: bool = True               # a panel's weights are a book rebalanced whole, not positions of their own (`panel`)
 
     @property
@@ -537,7 +539,7 @@ def _slot_liquidity(panel: Panel) -> pd.DataFrame:
 
 
 def rule(grid: dict | None = None, name: str | None = None, description: str = "", grade: Callable | None = None,
-         prepare: Callable | None = None, exposure: bool = False):
+         prepare: Callable | None = None, exposure: bool = False, model: bool = False):
     """A rule: one instrument's bars in, its position out. `prepare(panel, configs, member)`, when given, runs once
     before an evaluation's grid, with the list's membership (None: every instrument held from its first bar): a rule
     whose per-instrument work is heavy and shared by the grid does it there for every instrument at once (in
@@ -548,10 +550,13 @@ def rule(grid: dict | None = None, name: str | None = None, description: str = "
     `exposure`: the rule's position is a holding to keep while the name is listed, never closed by the rule and only
     resized (vol_managed), not a trade. On a universe that changes, a trade keeps a leaver's seat until the rule ends
     it (`seats`); a holding would keep it for ever, and the newcomers would never be bought. An exposure rule's names
-    are the universe's members instead: a leaver sold at the re-pick, a newcomer bought at once."""
+    are the universe's members instead: a leaver sold at the re-pick, a newcomer bought at once.
+
+    `model`: the function fits a model itself, drawing with its module's `SEED` (ml_feature_search; a rule with a
+    `prepare` step fits one there, ml_direction), so the robustness check of other seeds varies it."""
     def wrap(fn):
         return Strategy(name or fn.__name__, "rule", fn, grid or {}, description or (fn.__doc__ or "").strip(), grade,
-                        prepare, exposure=exposure)
+                        prepare, exposure=exposure, model=model)
     return wrap
 
 
@@ -635,14 +640,45 @@ def bars_in(x: pd.DataFrame | Panel, *, days: float | None = None, months: float
     return max(1, int(round(n * per_day.pop())))
 
 
+def calendar_months(months: float) -> pd.Timedelta:
+    """A span of calendar months as a fixed length of time (a rolling window's), a month a twelfth of 365.25 days."""
+    return pd.Timedelta(days=months * 365.25 / 12)
+
+
+def as_of(x: pd.DataFrame | pd.Series, *, months: float) -> pd.DataFrame | pd.Series:
+    """`x` as it stood `months` calendar months before each of its times (the same date that many months back, as
+    T-bills' trailing return is taken): its last value at or before that instant, NaN before it has one. A panel
+    strategy's lookback: counted in bars, it counts the bars of every name of the list at once, and where their
+    sessions sit on different clocks (the stock lists' hours of 2020-01..06, on the whole and on the half hour, about
+    ten bars a session together where each name has seven) a year of bars was eight months."""
+    back = x.index - (pd.DateOffset(months=int(months)) if float(months).is_integer() else calendar_months(months))
+    pos = x.index.searchsorted(back, side="right") - 1
+    out = x.iloc[np.maximum(pos, 0)].copy()
+    out.iloc[np.flatnonzero(pos < 0)] = np.nan
+    out.index = x.index
+    return out
+
+
+def ends(score: pd.DataFrame, frac: float) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """The names at each end of every bar's ranking by `score` (NaN: not ranked), as many at the bottom as at the top:
+    `frac` of the names ranked, at least one, at most half (1.0 where held). Taken as the ranks at or below `frac`
+    and at or above 1 - `frac`, the top had held one name more than the bottom (2 against 1 of ten names at 0.1), and
+    a bottom left empty had left the whole book flat (seven names at 0.1)."""
+    n = score.notna().sum(axis=1).to_numpy()
+    k = np.minimum(np.maximum(np.floor(n * frac + 1e-9), 1.0), n // 2)[:, None]
+    order = score.rank(axis=1, method="first").to_numpy()             # 1: the lowest score; NaN: not ranked
+    with np.errstate(invalid="ignore"):
+        low, high = order <= k, order > n[:, None] - k
+    return (pd.DataFrame(low.astype(float), index=score.index, columns=score.columns),
+            pd.DataFrame(high.astype(float), index=score.index, columns=score.columns))
+
+
 def long_short(score: pd.DataFrame, live: pd.DataFrame, frac: float, min_names: int = 6) -> pd.DataFrame:
-    """Long the top `frac` of the universe's names by score, short the bottom `frac`, each leg equal-weighted to half
-    the capital; flat while fewer than `min_names` names have a score."""
+    """Long the top `frac` of the universe's names by score, short the bottom `frac` (`ends`: as many names on each
+    side), each leg equal-weighted to half the capital; flat while fewer than `min_names` names have a score."""
     s = score.where(live)
-    ranks = s.rank(axis=1, pct=True)
     n = s.notna().sum(axis=1)
-    longs = (ranks >= 1 - frac).astype(float)
-    shorts = (ranks <= frac).astype(float)
+    shorts, longs = ends(s, frac)
     wl = longs.div(longs.sum(axis=1).replace(0, np.nan), axis=0) * 0.5
     ws = shorts.div(shorts.sum(axis=1).replace(0, np.nan), axis=0) * 0.5
     return (wl - ws).where(n >= min_names, 0.0).fillna(0.0)

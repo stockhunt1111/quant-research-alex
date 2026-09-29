@@ -13,7 +13,8 @@ positions on the day before the window, as a switch of configuration pays inside
 
 The result is saved as strategy "strategy_pick" on the instrument (a list of the ML task, a timeframe), with the
 windows' choices as its windows and the candidates it chose among (`pick_candidate`), stamped with the code of the
-evaluations and `lists.py` too, whose order of the lists decides which list's run of a strategy is a candidate. Looking at many such records and
+evaluations, the candidates' strategies and `lists.py` too, whose order of the lists decides which list's run of a
+strategy is a candidate. Looking at many such records and
 singling out the best is a choice again: the luck bar over them is the tries of family picks (`board.luck_of`).
 
     pick_all(conn)      # every instrument of the ML task's lists on each timeframe (the picks stage of a run)
@@ -130,8 +131,10 @@ def pick(conn, instrument: str, universe: str, timeframe: str, fill: str = "next
 def pick_all(conn) -> int:
     """Every instrument of the ML task's lists, on each timeframe: chosen, saved (replacing the earlier choices), and
     the luck bar over them kept. Returns how many were saved."""
-    # the candidates come from the lists in the order `lists.PER_INSTRUMENT` gives: a result reads that order too
-    code = provenance.stamp(inspect.getsourcefile(sys.modules[__name__]), also=("strategy_lab/lists.py",))
+    # the candidates come from the lists in the order `lists.PER_INSTRUMENT` gives: a result reads that order too, and
+    # the candidates' records, which a change of their strategies' files makes stale
+    code = provenance.stamp(inspect.getsourcefile(sys.modules[__name__]),
+                            also=("strategy_lab/lists.py", *(f"strategies/{name}.py" for name in CANDIDATES)))
     saved = []
     for universe in lists.ML_TASK:
         for tf in TIMEFRAMES:

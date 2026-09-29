@@ -87,12 +87,12 @@ def test_the_index_is_bought_on_the_records_first_day_and_held_with_its_dividend
     got = market_index.daily(market_index.BY_MARKET["Stocks"], days, "next_open")
     c, o = p.close["td:SPY"].to_numpy(), p.open["td:SPY"].to_numpy()
     paid = np.where(p.index == ex, 1.5, 0.0)
-    # decided at the first day's close, bought at the next bar's open for one purchase's cost, then its closes and the
-    # dividend on its ex-date
-    held = c[101] / o[101] * np.prod((c[102:] + paid[102:]) / c[101:-1]) * (1 - EQUITY)
+    # decided at the close before the first day, bought at that day's open for one purchase's cost, as the record's
+    # positions held that day were; then its closes and the dividend on its ex-date
+    held = c[100] / o[100] * np.prod((c[101:] + paid[101:]) / c[100:-1]) * (1 - EQUITY)
     assert got.index.equals(days)
     assert np.isclose(float((1 + got).prod()), held)
-    assert got.iloc[0] == 0.0 and (got[got.index.dayofweek >= 5] == 0.0).all()
+    assert got.iloc[0] != 0.0 and (got[got.index.dayofweek >= 5] == 0.0).all()
     assert market_index.figures(got)["start"] == str(days[0].date())
     assert set(market_index.figures(got)) == set(db.BENCHMARK_FIGURES)      # every figure a buy & hold shows
 
@@ -102,7 +102,7 @@ def test_the_index_is_bought_on_the_records_first_day_and_held_with_its_dividend
 def test_spy_held_as_the_index_earns_its_published_total_return():
     close = store.read_bars("td", "1d", "SPY", ["close"])["close"]
     for year, published in SPY_TOTAL_RETURN.items():
-        days = pd.date_range(f"{year - 1}-12-31", f"{year}-12-31", freq="D", tz="UTC")
+        days = pd.date_range(f"{year}-01-01", f"{year}-12-31", freq="D", tz="UTC")       # a record of the year
         got = float((1 + market_index.daily(market_index.BY_MARKET["Stocks"], days, "next_open")).prod() - 1)
         # bought at the year's first open, not at the close before it: that gap and one purchase's cost apart
         assert abs(got - published) < 0.004, (year, got)

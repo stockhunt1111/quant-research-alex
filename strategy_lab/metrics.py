@@ -75,9 +75,10 @@ def average_month(growth: float, days: int) -> float:
 
 
 def max_drawdown(daily: pd.Series) -> tuple[float, int]:
-    """Deepest peak-to-trough loss of compounded equity, and the longest time under water in days."""
+    """Deepest peak-to-trough loss of compounded equity, and the longest time under water in days. The account starts
+    at its capital: a loss on the record's first day is a drawdown from it."""
     eq = (1.0 + daily).cumprod()
-    peak = eq.cummax()
+    peak = eq.cummax().clip(lower=1.0)
     dd = eq / peak - 1.0
     return float(dd.min()) if len(dd) else 0.0, _longest_run((dd < 0).to_numpy())
 
@@ -103,7 +104,9 @@ def core(daily: pd.Series) -> dict:
     d = daily.dropna()
     months = monthly_returns(d)
     sd = d.std(ddof=1)
-    downside = d[d < 0].std(ddof=1)
+    # Sortino and Price's downside deviation: the losses' root mean square over every day (a target of zero, as the
+    # Sharpe here takes none off), not the spread of the losing days alone around their own mean
+    downside = float(np.sqrt(np.mean(np.minimum(d.to_numpy(dtype=np.float64), 0.0) ** 2))) if len(d) else np.nan
     eq_end = float((1.0 + d).prod())
     years = len(d) / DAYS
     mdd, mdd_days = max_drawdown(d)
@@ -160,11 +163,17 @@ FINANCING_SPREAD = 0.015      # a year above T-bills on money borrowed past 100%
 
 def daily_gross(held: pd.Series | None, index: pd.DatetimeIndex) -> pd.Series:
     """Each day's average gross exposure over its bars, from the exposure held through each bar (`exposure_stats`); fully
-    invested when it is not known."""
+    invested when it is not known. A day without a bar (a weekend or a holiday of a market with sessions) holds what
+    its last bar before held: the positions ride through it to the next bar, and none of that money is idle. Taken as
+    nothing held, a stock list fully invested was credited T-bills on its whole equity on 31% of its days, +0.6 to
+    +1.3% a year of its money test against buy & hold (2026-09-29, sma_cross on stocks Top-10 1d and 1h, the ETFs' Top-3
+    and 10 majors 1d)."""
     if held is None or held.empty:
         return pd.Series(1.0, index=index)
     day = (held.index - pd.Timedelta(microseconds=1)).tz_convert("UTC").normalize()
-    return held.groupby(day).mean().reindex(index, fill_value=0.0)
+    by_day = held.groupby(day)
+    last = by_day.last().reindex(index).ffill()
+    return by_day.mean().reindex(index).fillna(last).fillna(0.0)
 
 
 def t_bills(index: pd.DatetimeIndex) -> pd.Series:

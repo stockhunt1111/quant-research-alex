@@ -110,6 +110,18 @@ def test_a_comparison_buys_at_its_own_start_not_with_weights_drifted_since():
     assert np.isclose(_grown(_buy_and_hold(p, None, "next_close", start)), expected)
 
 
+def test_a_comparison_bought_on_a_day_earns_that_day_from_its_first_open():
+    # a US listing's daily bars close at 21:00 UTC: the record's positions held on a day were decided at the close of
+    # the day before, and the comparison is bought from that close too, at the day's first open
+    from strategy_lab.evaluate import _buy_and_hold
+    p = make_panel(ids=("td:AAA",), seed=9)
+    k = 150
+    day = p.index[k].normalize()                            # the UTC day bar k closes in
+    got = _buy_and_hold(p, None, "next_open", day)
+    assert got[got != 0].index[0] == day
+    assert np.isclose(got.loc[day], p.close["td:AAA"].iloc[k] / p.open["td:AAA"].iloc[k] * (1 - EQUITY) - 1)
+
+
 def test_a_dividend_is_reinvested_in_what_paid_it(tmp_path, monkeypatch):
     from tests.test_engine import _new_york_date, _store_dividends
     p = make_panel(ids=("td:AAA",), seed=2)

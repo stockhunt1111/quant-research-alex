@@ -1,24 +1,25 @@
 """Betting against beta, ported from the previous project (A. Frazzini & L. H. Pedersen, "Betting Against Beta", 2014,
-simplified: equal weights in each leg, no leverage). Beta is measured against the equal-weighted return of the
-universe's names over the past months; the book is rebuilt at each month's turn and held in between, and stays flat
-while fewer than six names have a beta."""
+simplified: equal weights in each leg, no leverage). A name's beta is measured over its own past months, before it
+joined the list too, against the equal-weighted return of the list's names; the list's names are ranked by it, as
+many in each leg (`strategy.ends`), and the book is rebuilt at each month's turn and held in between, and stays flat
+while fewer than six of them have a beta. Measured over its months in the list alone, a name had no beta until it
+had been a member that long: on crypto Top-100 over 36 months the book stood flat for half of its record."""
 from __future__ import annotations
 
 import numpy as np
 
-from strategy_lab.strategy import bars_in, panel, rebalanced
+from strategy_lab.strategy import as_of, calendar_months, ends, panel, rebalanced
 
 
 @panel(grid={"months": [3, 6, 12, 24, 36], "frac": [0.2], "rebalance": ["M"]})
 def betting_against_beta(p, months, frac, rebalance, live):
     """Long low-beta, short high-beta names, the short leg scaled so the two legs' betas cancel; gross 1."""
-    r = p.close.pct_change().where(live)
-    mkt = r.mean(axis=1)
-    n = bars_in(p, months=months)
-    beta = r.rolling(n).cov(mkt).div(mkt.rolling(n).var().replace(0, np.nan), axis=0)
-    ranks = beta.rank(axis=1, pct=True)
-    lo = (ranks <= frac).astype(float)
-    hi = (ranks >= 1 - frac).astype(float)
+    r = p.close.pct_change()
+    mkt = r.where(live).mean(axis=1)
+    span = calendar_months(months)
+    beta = r.rolling(span).cov(mkt).div(mkt.rolling(span).var().replace(0, np.nan), axis=0)
+    beta = beta.where(live & as_of(p.close, months=months).notna())          # its months of history behind it
+    lo, hi = ends(beta, frac)
     wl = lo.div(lo.sum(axis=1).replace(0, np.nan), axis=0)
     ws = hi.div(hi.sum(axis=1).replace(0, np.nan), axis=0)
     scale = ((beta * wl).sum(axis=1) / (beta * ws).sum(axis=1).replace(0, np.nan)).clip(0.0, 5.0)

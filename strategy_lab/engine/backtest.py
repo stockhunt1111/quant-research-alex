@@ -39,7 +39,8 @@ Conventions (all returns are fractions of equity):
     on record is a vendor lag, and its position stays open to the end.
   * Costs per side, on traded notional (`engine.costs`): commission + half-spread of the instrument's asset class; a
     spot quote of a commodity pays half the spread its broker quoted at the fill instead, bar by bar (at the bar's
-    open for a fill there, inside the bar for an intrabar exit, at the close before for a next_close fill).
+    open for a fill there, inside the bar for an intrabar exit, at the close before for a next_close fill). An
+    intrabar exit or a liquidation trades the position's value at its exit price.
   * Dividends: a US stock's or ETF's cash dividend is paid on its ex-date to the weight held at the close before
     (a short pays it), as a return over that close: the bars are not adjusted for dividends.
   * Carry: perp funding (positive rate: longs pay) at each settlement, by the position held at its moment and on the
@@ -52,6 +53,12 @@ Conventions (all returns are fractions of equity):
     the position still held, it had moved records on crypto Top-10 by -0.13 to +0.08 points of compounded return a
     year and their Sharpe by 0.003 at most (breakout_trail and donchian_breakout, a configuration each, 1h to 1d,
     2019-2026). Borrow on shorts of spot/equities accrues over calendar time on the short's value at the open.
+    Funding, borrow and dividends are cash: they move the equity and none of the positions' units, so a long that
+    pays funding is a larger share of the equity after it, as a perp's margin pays it. Until 2026-09-29 each position
+    kept its share of the equity through them, as if every carry were paid by selling a slice of every holding: a long
+    held through 2021's funding was sold down (tsmom long only over 12 months on crypto Top-10 1d, its whole record:
+    +0.42% a month that way, +0.22% holding its units, drawdowns of 73.6% and 77.6%; a configuration each of
+    vol_managed, sma_cross and gtaa_faber on stocks Top-10 and the 34 ETFs moved by 0.004 pp a month at most).
   * Exits (fill="next_open" only): stop-loss / take-profit / trailing stop, as fractions of the entry price or as
     multiples of the instrument's average true range, checked at every minute inside a bar where the store has the
     instrument's one-minute bars (`data.minutes`), and against the bar's own high and low elsewhere: a stop hit
@@ -868,13 +875,12 @@ def _session_return(exit_px, opn, intra):
 
 
 @njit(cache=True, error_model="numpy")
-def _close_weight(w, exit_px, opn, intra, session_sum):
-    """The weight at a bar's close of `w` held from its open: 0 where an intrabar exit closed it, else drifted with the
-    bar's return against the whole book's (`session_sum`, its weights times their returns)."""
+def _close_weight(w, exit_px, opn, intra, grew):
+    """The weight at a bar's close of `w` held from its open: 0 where an intrabar exit closed it, else its units at the
+    close over the equity then (`grew`: the equity at the close over the equity at the open, after the bar's fills)."""
     if not np.isnan(exit_px):
         return 0.0
-    den = 1.0 + session_sum
-    return w * (1.0 + _session_return(exit_px, opn, intra)) / (1.0 if den == 0.0 else den)
+    return w * (1.0 + _session_return(exit_px, opn, intra)) / (1.0 if grew == 0.0 else grew)
 
 
 @njit(cache=True)
@@ -1081,6 +1087,7 @@ def _held_returns(w, exit_px, opn, high, gap, intra, fund_at_close, fund_start, 
         session = 0.0
         fund = 0.0
         borrow = 0.0
+        paid_on_fills = 0.0                           # next_close's dividends, as fractions of the equity after the fills
         held_now = 0.0
         for a in range(n_active):
             j = active[a]
@@ -1109,7 +1116,9 @@ def _held_returns(w, exit_px, opn, high, gap, intra, fund_at_close, fund_start, 
                     entry[j] = 0.0
                     last_fill[j] = 0.0
             filled = abs(x - pre)
-            closed = abs(x) if not np.isnan(exit_px[t, j]) else 0.0
+            # an intrabar exit or a liquidation sells the position at its exit price: what it trades is its value there
+            closed = abs(x) * (1.0 + _session_return(exit_px[t, j], opn[t, j], intra[t, j])) \
+                if not np.isnan(exit_px[t, j]) else 0.0
             k_rate = rate_column[j]
             if k_rate >= 0:
                 c += filled * fill_rate[t, k_rate] + closed * exit_rate[t, k_rate]
@@ -1128,13 +1137,18 @@ def _held_returns(w, exit_px, opn, high, gap, intra, fund_at_close, fund_start, 
                                           exit_bar, exit_moment, closes_ns)
                 borrow += max(-x, 0.0) * borrow_rate[j]
                 if paid_after_fill:
-                    paid += x * dividends[t, j]
+                    paid_on_fills += x * dividends[t, j]
         exposure[t] = held_now
+        opened = (1.0 + gap_sum) * (1.0 - c)       # the equity after the bar's fills, over the last close's
+        paid += paid_on_fills * opened
+        # the equity at the close over the equity after the fills: the positions' session, less the funding and borrow
+        # paid, plus the dividends received; they are cash, and change no position's units
+        grew = 1.0 + session - fund - borrow * dt_years[t] + (paid / opened if opened != 0.0 else 0.0)
         a = 0
         while a < n_active:
             j = active[a]
             x = x_now[j]
-            w_close[j] = _close_weight(x, exit_px[t, j], opn[t, j], intra[t, j], session) if x != 0.0 else 0.0
+            w_close[j] = _close_weight(x, exit_px[t, j], opn[t, j], intra[t, j], grew) if x != 0.0 else 0.0
             if t >= ends_at[j] and w_close[j] == 0.0:        # out of the book: walked again from its next run
                 n_active -= 1
                 last = active[n_active]

@@ -18,11 +18,11 @@ import itertools
 import numpy as np
 import pandas as pd
 
-from strategy_lab import ml
-from strategy_lab.config import SEED
+from strategy_lab import config, ml
 from strategy_lab.strategy import rule, with_short
 
 HORIZON = 5
+SEED = config.SEED          # the model's random draws: the robustness check of other seeds varies it
 FAMILY_SETS = [c for k in range(1, len(ml.FAMILIES) + 1) for c in itertools.combinations(ml.FAMILIES, k)]
 
 
@@ -44,15 +44,15 @@ def predict_blocks(X: pd.DataFrame, y: pd.Series, rows: list[int], horizon: int)
     return proba
 
 
-# A fit depends on the bars, the families and the refit rows only: the thresholds, and the per-instrument runs of the
-# same bars, reuse it.
+# A fit depends on the bars, the families, the refit rows and the model's seed only: the thresholds, and the
+# per-instrument runs of the same bars, reuse it.
 _PREDICTIONS: dict[str, pd.Series] = {}
 
 
 def _cached(X: pd.DataFrame, y: pd.Series, rows: list[int], horizon: int) -> pd.Series:
     h = hashlib.sha256(pd.util.hash_pandas_object(X, index=True).to_numpy().tobytes())
     h.update(pd.util.hash_pandas_object(y, index=True).to_numpy().tobytes())
-    h.update(repr((rows, horizon)).encode())
+    h.update(repr((rows, horizon, SEED)).encode())
     key = h.hexdigest()
     if key not in _PREDICTIONS:
         if len(_PREDICTIONS) >= 4096:
@@ -61,13 +61,15 @@ def _cached(X: pd.DataFrame, y: pd.Series, rows: list[int], horizon: int) -> pd.
     return _PREDICTIONS[key]
 
 
-@rule(grid={"families": FAMILY_SETS, "threshold": [0.5, 0.55, 0.6], "long_only": [True, False]})
+@rule(grid={"families": FAMILY_SETS, "threshold": [0.5, 0.55, 0.6], "long_only": [True, False]}, model=True)
 def ml_feature_search(bars, families, threshold, long_only):
     """Long while LightGBM on the chosen indicator families gives a rise in HORIZON bars a probability above
-    `threshold`; unless long only, short while it gives it less than 1 - `threshold`."""
+    `threshold`; unless long only, short while it gives it less than 1 - `threshold`. A bar without a prediction (a
+    feature undefined on it) keeps the position before it."""
     fam = ml.features(bars)
     X = pd.concat([fam[f] for f in families], axis=1)
     later = bars["close"].shift(-HORIZON)
     y = (later > bars["close"]).astype(float).where(later.notna())
     proba = _cached(X, y, ml.refit_rows(bars.index), HORIZON)
-    return with_short((proba > threshold).astype(float), (proba < 1.0 - threshold).astype(float), long_only)
+    side = with_short((proba > threshold).astype(float), (proba < 1.0 - threshold).astype(float), long_only)
+    return side.where(proba.notna())

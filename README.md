@@ -227,7 +227,13 @@ Other data commands:
   whole (every position traded back to its weight when any weight moves: an allocation decided once a month or week),
   or with `@panel(book=False)` positions of their own, each traded only when its own weight moves (`big_move_follow`'s
   events: rebalanced whole, a book of events sold its running moves down at every new one, 22-47% of the bars it held
-  anything on 1d lists, 2.7% a year on crypto Top-50 at the median).
+  anything on 1d lists, 2.7% a year on crypto Top-50 at the median; an event takes a free seat on its first bar, the
+  strongest of those starting together first, and keeps it to its end, `strategy.slotted`). A panel's lookback in
+  months is calendar time (`strategy.as_of`, `calendar_months`): counted in bars it counted the bars of every name of
+  the list at once, and the stock lists' hours of 2020-01..06, on the whole and the half hour, made about ten bars a
+  session together where each name has seven (a year of bars was eight months). A ranking's two ends hold as many names
+  each (`strategy.ends`: `frac` of the names ranked, at least one): the top had held one more than the bottom, and a
+  bottom left empty had left a long/short book flat.
 * `grid` — every combination is evaluated; walk-forward picks among them. Keys `stop`, `take`, `trail` (fractions of
   the entry price) and `stop_atr`, `take_atr`, `trail_atr` (multiples of the instrument's 14-bar average true range:
   the same room relative to its swings on an hour of a currency pair as on a day of a coin) switch on the engine's
@@ -280,7 +286,10 @@ list holds the same names on 1h and 4h as on 1d (a session's intraday bars miss 
 that differs by name) (`us_stocks_top3/10/50/100`, `crypto_top3/10/50/100`, `etf_top3`: a member keeps its seat
 until it ranks below 1.5 x N or stops trading, so a name at the edge no longer flips in and out every month; a seat
 goes only to a name that traded in the window, and a delisted market gives up its seat the day after its last bar to
-the best-ranked name outside); ETFs also as the 10 majors
+the best-ranked name outside; a re-pick decided at the end of a day is in force from the next day's first instant, on
+every bar that closes then or later: a coin's bar of a month's last hour or day, which closes at the next month's
+first instant, is a monthly strategy's decision at the turn, and until 2026-09-29 it saw the month before's list, its
+newcomers bought a month late); ETFs also as the 10 majors
 (`stockhunt_etfs`) and all 34 (`etf_core`); the 7 FX majors; all 5 commodities on their spot quotes
 (`stockhunt_commodities`) and 6 on their CME futures (`cme_futures`), two markets as on the desk. Liquidity,
 not market capitalisation: a list that changes through history needs its ranking at every past date, and
@@ -295,7 +304,8 @@ The firm's products, dashboard and simulator run one strategy on one symbol with
 `per_asset.evaluate(strategy, universe, timeframe)` scores a rule strategy on every instrument of the universe
 alone (parameters by walk-forward on that instrument's own past, out-of-sample only, against the target and the
 instrument's own buy-and-hold, cash for a currency pair or crude's spot quote; `slots` dropped). A ranked universe contributes
-today's members, each over its whole history. `python scripts/per_asset.py` runs every rule strategy on the widest
+today's members, each over its whole history (ranked on its daily bars whatever the timeframe, as its
+lists are: every timeframe tests the same names). `python scripts/per_asset.py` runs every rule strategy on the widest
 list of each market
 (`strategy_lab.lists.PER_ASSET`: today's 100 most liquid S&P 500 stocks, today's 100 most liquid Binance coins, the 34
 ETFs, FX majors, the five commodities' spot quotes and the six CME futures) on 1h/4h/1d — the narrower lists of a
@@ -338,7 +348,8 @@ and without it, and writes reports/peer_check.md.
   growing window's changed 6 (`python scripts/rolling_walkforward.py` -> reports/rolling_walkforward.md). This is the
   number compared with the target. An instrument is judged once it has at least 6 months out-of-sample. A list is
   scored from the first day it holds at least half of its names (half of a top-N list's N, half of a fixed list): the
-  S&P 500 lists from 1996, where the membership data begins, the 10 major ETFs from 1998-12, all 34 from 2002-07, the
+  S&P 500 lists from 1998-02 (the membership data begins in 1996, Sharadar's prices at the end of 1997), the 10 major
+  ETFs from 1998-12, all 34 from 2002-07, the
   spot commodities from 1983-03 (1h and 4h from 2019-02-18), the CME futures from 2010-06; older bars serve only as
   indicator history, since a basket of one or two names is not the list.
 * **In-sample (IS)** — the parameters that are best over the whole history, scored over the out-of-sample days (the
@@ -351,9 +362,14 @@ and without it, and writes reports/peer_check.md.
   Sharpe >= 1, beats buy-and-hold of the same universe: more money than holding it once sized to its risk, the
   research desk's criterion (`metrics.equal_risk`: each day's multiple is buy-and-hold's trailing 90-day volatility
   over the record's, both known the day before, at most 2x; idle equity earns the 3-month T-bill rate, money borrowed
-  past 100% pays it + 1.5%), shown as the return a year above holding (`vs_bh`). A strategy in the market half the
-  time carries half the risk: its raw return against holding measures how much capital it deploys, not its skill.
-  Buy-and-hold (`engine.hold`) puts equal money in the list's instruments when it starts and then holds the units,
+  past 100% pays it + 1.5%), shown as the return a year above holding (`vs_bh`). A day without a bar (a weekend, a
+  holiday) holds what the last bar before it held (`metrics.daily_gross`): until 2026-09-29 it counted as nothing
+  held, and a stock list fully invested earned T-bills on its whole equity on 31% of its days (+0.6 to +1.3% a year of
+  `vs_bh` for `sma_cross` on stocks Top-10 1d and 1h and the ETFs; the ETFs' Top-3 turned from beating holding to not).
+  A strategy in the market half the time carries half the risk: its raw return against holding measures how much
+  capital it deploys, not its skill.
+  Buy-and-hold (`engine.hold`) puts equal money in the list's instruments when it starts (at the record's first
+  open, decided at the close before it as the record's positions are, `hold.bought_on`) and then holds the units,
   on spot terms: a coin at its Binance spot pair's prices (the perp's own, on the pair's scale, before the pair lists
   or for a futures-only coin), no funding, dividends paid on the ex-date. Money moves only when the composition
   changes, on the bar after the decision: a leaver is sold and its money buys the newcomer; only those trades pay
@@ -395,7 +411,9 @@ and without it, and writes reports/peer_check.md.
 * **At 10% DD** — the average month over all the out-of-sample years with the record's positions scaled so that its
   max drawdown is the target's (`db.at_target_dd`), to compare returns that come with different drawdowns: Calmar's
   question (a year's return over the worst drawdown, as the research desk, ManifoldBT and the Minerva tester show it)
-  in the target's units, which orders the records as Calmar does. A record that fell 25% is held at 40% of its size,
+  in the target's units, which orders records much as Calmar does (the same order on 93-95% of pairs, 2026-09-29:
+  borrowing past the equity and the compounding of a scaled record part them). A record that fell 25% is held at 40%
+  of its size,
   one that fell 5% at twice it: the multiple is found by halving its span until the scaled daily record draws down
   exactly -10%. The money the positions leave idle earns nothing, as in the record's own average month (a multiple of
   1 gives that month back); money borrowed past the equity pays T-bills + 1.5%, counted on the record's average
@@ -435,13 +453,21 @@ and without it, and writes reports/peer_check.md.
   K-ratio of 0.64, `tsmom` on stocks Top-3 1h 1.27 and 1.50. The writer works it out from the series it saves, as it
   works out the trades' profit factor (no evaluation reads it, so no result's stamp covers it). None for an account
   that lost everything, whose log equity ends there (4 single-asset `tsmom` shorts on coins).
+* **Max drawdown** — the deepest fall of the compounded account from its highest point, the capital it started with
+  included: a loss on the record's first day is a drawdown (until 2026-09-29 the highest point began after that day:
+  266 of 17,280 saved records drew down deeper counted from their start, 0.22 pp at the median).
+* **Sortino** — the mean day over the downside deviation, Sortino and Price's: the root mean square of the losses
+  over every day, a target of zero as the Sharpe here takes no rate off (until 2026-09-29 the spread of the losing
+  days alone around their own mean, 0.57 times this at the median of the saved records).
 * **Monte Carlo** — stationary block bootstrap of the OOS daily returns of a result that makes money: P5/P50/P95 of
   the target figures.
 * **Makes money** means a positive Sharpe AND a positive compounded return: a positive Sharpe can still lose money
   once large swings compound, and such a result is rejected with that reason.
-* **Beyond luck** — every evaluation made is a try the best results were picked from: `P(beyond luck)` is the
+* **Beyond luck** — every evaluation saved is a try the best results were picked from: `P(beyond luck)` is the
   probability that a record's Sharpe is above what the best of that many worthless tries would show over a record of
-  the same length (`significance.deflated`: Bailey & Lopez de Prado's deflated Sharpe, with its skew and kurtosis).
+  the same length (`significance.deflated`: Bailey & Lopez de Prado's deflated Sharpe, with its skew and kurtosis;
+  the expected best of n normal draws worked out exactly, `significance.expected_max`, where their approximation read
+  1-2% high from three tries on and below zero under 1.28, which a family of near copies counts).
   A try that resembles another is not another chance: the same rule on nested lists, on neighbouring timeframes or
   with its model wins and loses with itself. The board counts the independent tries its saved evaluations add up to
   (`board.luck_of`: were none of them skilled, their Sharpe ratios would be normal scores correlated as their daily
@@ -454,9 +480,15 @@ and without it, and writes reports/peer_check.md.
   instruments taken as independent though they share their market: 17,035 pairs made 13,234 tries) say how far luck
   takes the best row of the whole table; the probability against them is shown beside the instrument's own.
 * **Random timing** — the record's positions against the same positions moved in time (each instrument's path rotated
-  within its own bars): same time in the market, same holding periods, only the timing random. The p-value is the
-  share of 500 rotations that earn the record's Sharpe (`significance.random_timing`); a record whose rotations do as
-  well earns from being in the market, not from its timing.
+  within the bars it printed on which the record could hold it: a member of its list then, or held as a leaver's
+  trade): same time in the market, same holding periods, only the timing random. The p-value is the share of 500
+  rotations that earn the record's Sharpe (`significance.random_timing`); a record whose rotations do as well earns
+  from being in the market, not from its timing. Rotated through a ranked list's names' bars before they joined it,
+  mostly the run-up that made them liquid enough to join, the rotations had held what no book of the list could:
+  books of random picks among the members, with no skill, had a median p of 0.79 on crypto Top-10 1d and none below
+  0.10 (2026-09-29). Held to those bars: 0.57 on crypto Top-10 1d (16% above 0.9, 1% below 0.1: still a strict test
+  there, the rotations' names stacking in time where the books' do not), 0.52 on stocks Top-10 1d (8% below 0.05),
+  0.47 on the 34 ETFs, a fixed list (3% below 0.05).
 * **Robustness** — the board's `robustness` column: the checks a result passes of those that apply to it (`7/9`;
   one that does not apply is left out, one whose record is too short to judge counts as not passed). They are
   measured in the evaluation of a result that makes money out-of-sample (`strategy_lab.robustness`, on the
@@ -471,9 +503,11 @@ and without it, and writes reports/peer_check.md.
      5%, maxT; 3.61 on 2026-09-25);
   3. timing beats random: p below 0.05;
   4. not overfitted: the probability of backtest overfitting (combinatorially symmetric cross-validation of the
-     grid's records, 10 blocks) at most 0.5; not for a single configuration;
-  5. parameter plateau: the configurations one grid step from the one the windows chose most all make money and keep
-     half its Sharpe at the median; not for a single configuration;
+     grid's records, 10 blocks; a choice ranked at the median counts as overfitted, as the paper's logit at zero does)
+     at most 0.5; not for a single configuration;
+  5. parameter plateau: the configurations one grid step from the one the windows chose most, along a parameter whose
+     values are ordered (numbers, or a switch's two values; not ml_feature_search's sets of indicator families), all
+     make money and keep half its Sharpe at the median; not for a single configuration;
   6. stable across eras: the Minerva tester's consistency over two-year windows (a last one of a year counts) at
      least 0.60, three windows needed;
   7. without its best year: the record without its best calendar year keeps at least half of its average month (both
@@ -488,7 +522,8 @@ and without it, and writes reports/peer_check.md.
   11. neighbouring lists: on a Top-N list, Top-(N-d) and Top-(N+d) (d = 20% of N rounded to 5, at least 5 and at
       most half of N: 2/4, 5/15, 40/60, 80/120) make money and keep half its Sharpe; evaluated inside the result's
       evaluation, never saved;
-  12. with a model, other seeds: seeds 1-4 of its model make money and keep half its Sharpe;
+  12. with a model, other seeds: seeds 1-4 of its model make money and keep half its Sharpe (a grade's model, or the
+      one the strategy's module fits and draws with its `SEED`: ml_direction and, since 2026-09-29, ml_feature_search);
   13. with a model, beats the plain rule: t at least 2 over the same rule without its model.
 
   A strategy on an instrument alone (Research's Assets, `per_asset`) is checked the same way, in its own evaluation,
@@ -539,7 +574,17 @@ and without it, and writes reports/peer_check.md.
   weekly rebalance); between, a weight drifts with its price. Until 2026-09-27 every weight was traded back to its
   target on every bar, selling a trend's winners down each bar (SMA 20/200 on crypto Top-10 1d: 6.1% a year where
   held units make 10.2%, on stocks Top-10 1d 10.2% against 11.5%; IBS's short trades within 0.5% either way) and
-  rebalancing every bar a book meant to be rebalanced monthly.
+  rebalancing every bar a book meant to be rebalanced monthly. A book's decision that repeats its weights (the same
+  names picked again) trades nothing: brought back to them at every decision instead, `sector_rotation` and
+  `dual_momentum` on the ETFs and crypto Top-10 (10-40% of their monthly decisions repeat) moved by 0.04 pp a month,
+  0.006 of Sharpe and 0.6 pp of drawdown at most (2026-09-29). Funding, borrow and dividends are cash: they change the
+  equity and none of the units held, so a long that pays funding is a larger share of the equity after it, as a
+  perp's margin pays it. Until 2026-09-29 each position kept its share through them, as if every carry were paid by
+  selling a slice of every holding: a long held through 2021's funding was sold down (`tsmom` long only over 12
+  months on crypto Top-10 1d, its whole record: +0.42% a month that way, +0.22% holding its units, drawdowns of 73.6%
+  and 77.6%; a configuration each of `vol_managed`, `sma_cross` and `gtaa_faber` on stocks Top-10 and the 34 ETFs moved
+  by 0.004 pp a month at most). An intrabar exit or a liquidation pays its cost on the position's value at the exit
+  price (it had paid it on the value at the bar's open).
 * No fill takes the positions held past the capital, as a cash account without margin buys. Held as units, the
   positions grow past their shares, and a trade entered at its share of the equity can need more money than is free
   (two seats of half: one bought and doubled holds two thirds, and half of the equity bought for the other would

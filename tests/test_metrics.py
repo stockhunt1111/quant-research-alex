@@ -74,6 +74,31 @@ def test_drawdown_of_a_known_path():
     assert days == 2
 
 
+def test_a_record_that_loses_on_its_first_day_draws_down_from_its_starting_capital():
+    d = pd.Series([-0.05, 0.02, 0.01], index=pd.date_range("2024-01-01", periods=3, freq="D", tz="UTC"))
+    mdd, days = metrics.max_drawdown(d)
+    assert mdd == pytest.approx(-0.05)
+    assert days == 3                                    # 0.95, 0.969, 0.979: under the capital it started with
+
+
+def test_the_sortino_ratio_divides_by_the_losses_root_mean_square_over_every_day():
+    d = pd.Series([0.01, -0.02, 0.0, 0.03, -0.01] * 20, index=pd.date_range("2024-01-01", periods=100, freq="D",
+                                                                             tz="UTC"))
+    # Sortino and Price: mean 0.002 over a downside deviation of sqrt((0.02^2 + 0.01^2) / 5) = 0.01
+    assert metrics.core(d)["sortino"] == pytest.approx(0.2 * np.sqrt(365))
+
+
+def test_monte_carlo_scores_a_path_as_the_scorecard_does():
+    from strategy_lab import montecarlo
+    d = pd.Series(np.random.default_rng(6).normal(0.0006, 0.012, 800),
+                  index=pd.date_range("2021-01-10", periods=800, freq="D", tz="UTC"))
+    d.iloc[0] = -0.04                                   # its deepest fall starts from the capital
+    first, last = montecarlo._complete_months(d.index)
+    got = montecarlo._figures(d.to_numpy(), first, last, metrics.DAYS)
+    c = metrics.core(d)
+    assert list(got) == [c[f] for f in montecarlo.FIGURES]
+
+
 def test_a_bar_closing_at_midnight_belongs_to_the_previous_day_and_empty_days_are_zero():
     idx = pd.DatetimeIndex(["2024-01-31 12:00", "2024-02-01 00:00", "2024-02-03 12:00"], tz="UTC")
     d = metrics.daily_returns(pd.Series([0.01, 0.02, 0.03], index=idx))
@@ -115,6 +140,19 @@ def test_holding_the_benchmark_itself_does_not_beat_it():
     bench = _bench()
     card = metrics.scorecard(bench, benchmark=bench)
     assert card["vs_bh"] == pytest.approx(0.0, abs=1e-12) and not card["beats_bh"]
+
+
+def test_a_record_held_through_the_weekends_earns_no_t_bills_on_them():
+    # a stock list's bars, weekdays only: the record holds all of its equity through every bar, and so through the
+    # weekends between them, where it has no bar
+    bars = pd.bdate_range("2021-01-04", periods=520, tz="UTC") + pd.Timedelta(hours=21)
+    daily = metrics.daily_returns(pd.Series(np.random.default_rng(3).normal(0.0004, 0.01, len(bars)), index=bars))
+    assert (daily == 0.0).mean() > 0.28                 # the weekends: days of the record without a bar
+    card = metrics.scorecard(daily, exposure=pd.Series(1.0, index=bars), benchmark=daily)
+    assert card["vs_bh"] == pytest.approx(0.0, abs=1e-12)
+    against_cash = metrics.scorecard(daily, exposure=pd.Series(1.0, index=bars), benchmark=0.0 * daily, cash=True)
+    assert against_cash["vs_bh"] == pytest.approx(metrics.core(daily)["cagr"] - metrics.core(
+        metrics.t_bills(daily.index))["cagr"], abs=1e-12)
 
 
 def test_the_benchmark_held_at_half_size_is_the_benchmark_once_sized_to_its_risk():

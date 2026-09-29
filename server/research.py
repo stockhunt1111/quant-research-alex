@@ -96,7 +96,7 @@ def weekly(daily: pd.Series | None, cap: int = CAP) -> tuple[list, list]:
         return [], []
     eq = (1.0 + d).cumprod()
     wk = eq.resample("W-SUN").last().dropna()
-    low = (eq / eq.cummax() - 1.0).resample("W-SUN").min().reindex(wk.index)
+    low = (eq / eq.cummax().clip(lower=1.0) - 1.0).resample("W-SUN").min().reindex(wk.index)     # from the start at 1
     step = max(1, int(np.ceil(len(wk) / cap)))
     keep = np.unique(np.r_[np.arange(0, len(wk), step), len(wk) - 1])
     lows = pd.Series(low.to_numpy()).groupby(np.searchsorted(keep, np.arange(len(wk)))).min()

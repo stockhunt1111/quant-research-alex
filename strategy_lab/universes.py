@@ -20,12 +20,15 @@ from typing import Callable
 import numpy as np
 import pandas as pd
 
+from strategy_lab import log
 from strategy_lab.config import REFERENCE_DIR
 from strategy_lab.data import calendars as cal
 from strategy_lab.data import market_cap, sharadar, store
 from strategy_lab.data.bars import Panel, liquidity, load_panel
 from strategy_lab.data.instruments import COMMODITIES, parse
 from strategy_lab.engine.backtest import ended
+
+LOG = log.get("universes")
 
 ETF_CORE = ["SPY", "QQQ", "IWM", "DIA", "XLK", "XLF", "XLE", "XLV", "XLY", "XLP", "XLI", "XLB", "XLU", "XLRE",
             "SMH", "KRE", "GLD", "SLV", "GDX", "USO", "UNG", "DBC", "DBA", "CPER", "TLT", "IEF", "SHY", "HYG",
@@ -197,6 +200,8 @@ def top_liquid(panel: Panel, n: int, lookback_days: int = 60, eligible: pd.DataF
         ok = eligible.groupby(day).max().reindex(med.index).fillna(False).astype(bool)
         med = med.where(ok)
     month_end = set(med.groupby(med.index.tz_localize(None).to_period("M")).tail(1).index)
+    if len(med) and med.index[-1].day != med.index[-1].days_in_month:
+        month_end.discard(med.index[-1])        # the data's last day ends no month: its month goes on after it
     stopped = ended(panel)
     off = stopped.groupby(day).max().reindex(med.index).fillna(False).astype(bool)   # a day with a delisted stretch
     # a market's seat changes hands at the end of the last day it traded before each delisting
@@ -223,8 +228,13 @@ def top_liquid(panel: Panel, n: int, lookback_days: int = 60, eligible: pd.DataF
         held = keep + [c for c, v in order if c not in kept and v > 0][:n - len(keep)]
         seats.append(med.columns.isin(held))
     chosen = pd.DataFrame(seats, index=pd.DatetimeIndex(dates), columns=med.columns).astype(float)
-    chosen.index = chosen.index + pd.Timedelta(days=1)             # decided at the end of a day, used after it
-    mask = chosen.reindex(chosen.index.union(day.unique())).ffill().reindex(day).fillna(0.0)
+    # decided at the end of a day, in force from the next day's first instant: on every bar that closes on that day or
+    # later, the bar closing at that instant included (a coin's bar of a month's last hour or day, whose close is a
+    # monthly strategy's decision at the month's turn; mapped by the day a bar's trading belongs to, that decision saw
+    # the month before's list)
+    chosen.index = chosen.index + pd.Timedelta(days=1)
+    close_day = dv.index.normalize()
+    mask = chosen.reindex(chosen.index.union(close_day.unique())).ffill().reindex(close_day).fillna(0.0)
     mask.index = dv.index
     return mask.astype(bool) & panel.started & ~stopped
 
@@ -369,13 +379,23 @@ def resolve(name: str, timeframe: str) -> Universe:
 
 def instruments_now(name: str, timeframe: str) -> tuple[list[str], tuple[str, ...]]:
     """The instruments a per-instrument test covers, and the notes that go with them: a fixed list as it is; a
-    monthly-ranked universe (us_stocks_topN, crypto_topN) as its members at the latest bar — the names a user picks
-    today, each then tested over its whole history."""
+    monthly-ranked universe (us_stocks_topN, crypto_topN) as its members at the latest daily bar — the names a user
+    picks today, each then tested over its whole history. Ranked on the daily bars whatever the timeframe, as a list
+    seats its names (`evaluate._seats`), so every timeframe tests the same names: ranked on each timeframe's own bars,
+    whose intraday bars miss the auctions, the stocks' Top-100 held ADI and BSX on 1d only and BLK and GLW on 1h and 4h
+    only (2026-09-29). A member without bars of the timeframe is left out, and named in the log."""
     uni = resolve(name, timeframe)
     if uni.member is None:
         return uni.ids, uni.notes
-    panel = load_panel(uni.ids, timeframe)
-    now = uni.member(panel).iloc[-1]
-    note = (f"today's {int(now.sum())} members of {name}, each over its whole history: names that are liquid today "
+    daily = resolve(name, "1d")
+    panel = load_panel(daily.ids, "1d", fields=("close", "dollar_volume"))
+    now = daily.member(panel).iloc[-1]
+    members = [i for i in panel.ids if bool(now[i])]
+    stored = set(uni.ids)
+    missing = [i for i in members if i not in stored]
+    if missing:
+        LOG.warning("%s %s: %d of today's %d members have no bars of the timeframe and are not tested: %s", name,
+                    timeframe, len(missing), len(members), ", ".join(missing))
+    note = (f"today's {len(members)} members of {name}, each over its whole history: names that are liquid today "
             "survived to be so, so long-only results are biased upward")
-    return [i for i in panel.ids if bool(now[i])], (*uni.notes, note)
+    return [i for i in members if i in stored], (*uni.notes, note)

@@ -70,6 +70,41 @@ def test_next_close_fills_at_the_close_a_bar_later_and_holds_units(book):
     assert np.allclose(res.returns.to_numpy(), _units_account(before, c, shifted, book), atol=1e-12)
 
 
+def _long_short_account(opn, close, T, times, book):
+    """An account in cash and units whose positions go long and short within the capital (gross <= 1 at every fill):
+    a moved target is bought or sold to that share of the equity at the open, its cost paid pro rata out of every
+    holding as the engine's (1 - cost) factor does, the rest of its units held; a short's borrow is paid in cash on its
+    value after the bar's fills, over the calendar time to the bar's close, and changes no position's units."""
+    n, m = close.shape
+    cash, units, last = 1.0, np.zeros(m), np.zeros(m)
+    equity, out = 1.0, np.zeros(n)
+    for k in range(1, n):
+        tgt = T[k - 1]
+        at_fill = cash + (units * opn[k]).sum()
+        held = units * opn[k] / at_fill
+        move = np.full(m, (tgt != last).any()) if book else tgt != last
+        new = np.where(move, tgt, held)
+        after = at_fill * (1 - (np.abs(new - held) * RATE).sum())
+        units = new * after / opn[k]
+        cash = after - (units * opn[k]).sum()
+        last = np.where(move, tgt, last)
+        cash -= np.maximum(-units * opn[k], 0.0).sum() * BORROW * (times[k] - times[k - 1]) / bt.YEAR
+        closed = cash + (units * close[k]).sum()
+        out[k] = closed / equity - 1
+        equity = closed
+    return out
+
+
+@pytest.mark.parametrize("book", [False, True])
+def test_long_and_short_positions_hold_units_as_an_account_that_pays_its_borrow_in_cash(book):
+    p = make_panel(seed=21, n=500)
+    T = _random_target(p, seed=22, values=(-0.3, -0.15, 0.0, 0.15, 0.3))     # gross 0.6 at most: never capped
+    res = bt.run(p, T, fill="next_open", book=book)
+    assert (res.unfunded == 0).all() and not res.liquidated.to_numpy().any()
+    ref = _long_short_account(p.open.to_numpy(), p.close.to_numpy(), T.to_numpy(), p.index, book)
+    assert np.allclose(res.returns.to_numpy(), ref, rtol=0, atol=1e-13)
+
+
 def test_a_held_position_drifts_with_its_price_and_a_book_is_brought_back_to_its_weights():
     p = make_panel(n=60, seed=8)
     half = pd.DataFrame({"td:AAA": 0.5, "td:BBB": 0.0}, index=p.index)
@@ -106,7 +141,7 @@ def test_gross_above_capital_is_refused():
         bt.run(p, T)
 
 
-def _bars(rows):
+def _bars(rows, instrument="td:X"):
     """Tiny single-instrument panel from (open, high, low, close) rows."""
     from strategy_lab.data.bars import Panel
     from strategy_lab.data.instruments import parse
@@ -114,7 +149,8 @@ def _bars(rows):
     a = np.array(rows, dtype=float)
     cols = {"open": a[:, 0], "high": a[:, 1], "low": a[:, 2], "close": a[:, 3],
             "volume": np.ones(len(a)), "dollar_volume": a[:, 3]}
-    return Panel("1d", {"td:X": parse("td:X")}, **{k: pd.DataFrame({"td:X": v}, index=idx) for k, v in cols.items()})
+    return Panel("1d", {instrument: parse(instrument)},
+                 **{k: pd.DataFrame({instrument: v}, index=idx) for k, v in cols.items()})
 
 
 def test_stop_fills_at_level_and_stays_flat_until_signal_changes():
@@ -281,7 +317,9 @@ def test_a_dividend_is_paid_on_its_ex_date_to_the_position_held_at_the_close_bef
     a_day = (p.index[k] - p.index[k - 1]) / bt.YEAR
     short = -long
     short.iloc[: k - 2] = 0.0                                 # sold short at k-1's open: -1 of the equity then
-    assert bt.run(p, short).carry.iloc[k] == pytest.approx(paid + BORROW * a_day)   # the short pays it, and its borrow
+    # its units at k-1's flat close are a larger share of an equity the borrow paid over bar k-1 made smaller
+    units = 1.0 / (1.0 - BORROW * (p.index[k - 1] - p.index[k - 2]) / bt.YEAR)
+    assert bt.run(p, short).carry.iloc[k] == pytest.approx(units * (paid + BORROW * a_day), rel=1e-12)
     bought_on_the_ex_date = long.copy()
     bought_on_the_ex_date.iloc[: k - 1] = 0.0                                     # decided at k-1's close, bought at k's open
     assert bt.run(p, bought_on_the_ex_date).carry.iloc[k] == pytest.approx(0.0)
@@ -328,22 +366,23 @@ def test_a_stopped_out_position_stays_flat_when_its_target_is_only_resized():
 
 
 def test_a_short_whose_price_doubles_is_liquidated_there_and_loses_the_money_it_was_sold_for():
-    # sold at 100 with half the equity; the price reaches 250 inside bar 2: closed at 200, the account keeps half
-    p = _bars([(100, 100, 100, 100), (100, 120, 99, 110), (110, 250, 105, 240), (240, 245, 230, 240)])
-    res = bt.run(p, pd.DataFrame({"td:X": [-0.5] * 4}, index=p.index))
-    assert res.exits["td:X"].iloc[2] == pytest.approx(200.0) and res.liquidated["td:X"].iloc[2]
-    assert (1 + res.gross).prod() == pytest.approx(0.5)
-    assert res.weights["td:X"].iloc[3] == 0.0 and res.gross.iloc[3] == 0.0
+    # sold at 100 with half the equity; the price reaches 250 inside bar 2: closed at 200, the account keeps half (a
+    # future: no borrow is paid, which would make the short's units a larger share of the equity by the day after)
+    p = _bars([(100, 100, 100, 100), (100, 120, 99, 110), (110, 250, 105, 240), (240, 245, 230, 240)], "cme:X")
+    res = bt.run(p, pd.DataFrame({"cme:X": [-0.5] * 4}, index=p.index))
+    assert res.exits["cme:X"].iloc[2] == pytest.approx(200.0) and res.liquidated["cme:X"].iloc[2]
+    assert (1 + res.gross).prod() == pytest.approx(0.5, rel=1e-12)
+    assert res.weights["cme:X"].iloc[3] == 0.0 and res.gross.iloc[3] == 0.0
     trades = ledger(p, res)
     assert trades["exit_reason"].tolist() == ["liquidated"] and trades["gross_return"].iloc[0] == pytest.approx(-1.0)
 
 
 def test_a_short_whose_price_gaps_past_twice_its_entry_loses_no_more_than_the_money_it_was_sold_for():
-    p = _bars([(100, 100, 100, 100), (100, 120, 99, 110), (300, 310, 290, 305), (305, 310, 300, 305)])
-    res = bt.run(p, pd.DataFrame({"td:X": [-0.5] * 4}, index=p.index))
-    assert (1 + res.gross).prod() == pytest.approx(0.5)                   # at 305 unliquidated it would be below zero
-    assert res.exits["td:X"].iloc[1] == pytest.approx(200.0) and res.liquidated["td:X"].iloc[1]
-    assert (res.weights["td:X"].iloc[2:] == 0.0).all()
+    p = _bars([(100, 100, 100, 100), (100, 120, 99, 110), (300, 310, 290, 305), (305, 310, 300, 305)], "cme:X")
+    res = bt.run(p, pd.DataFrame({"cme:X": [-0.5] * 4}, index=p.index))
+    assert (1 + res.gross).prod() == pytest.approx(0.5, rel=1e-12)       # at 305 unliquidated it would be below zero
+    assert res.exits["cme:X"].iloc[1] == pytest.approx(200.0) and res.liquidated["cme:X"].iloc[1]
+    assert (res.weights["cme:X"].iloc[2:] == 0.0).all()
     assert ledger(p, res)["exit_reason"].tolist() == ["liquidated"]
 
 
@@ -542,9 +581,10 @@ def test_a_sale_goes_through_while_the_positions_hold_more_than_the_capital_and_
     assert res.unfunded.iloc[k] == pytest.approx(0.5)
     held_short = abs(res.weights["td:XXX"].iloc[k])                        # its fill: half the equity back then
     assert res.exposure.iloc[k] > 1.5 > held_short                         # drifted: a short's own risk, not cut
-    # by hand: sold at 100 for half the equity, the short lost 0.45 of it at 190, so the equity is 0.55 and the long's
-    # half of the start is 10/11 of it: the long is sold whole, and nothing is bought
-    assert res.turnover.iloc[k] == pytest.approx(0.5 / 0.55, rel=1e-9)
+    # by hand: sold at 100 for half the equity, the short lost 0.45 of it at 190 and paid its borrow in cash on its
+    # value at each bar's open (half the equity on bars 1 and 2, three quarters on bar 3 at 150), so the equity is
+    # about 0.55 and the long's half of the start about 10/11 of it: the long is sold whole, and nothing is bought
+    assert res.turnover.iloc[k] == pytest.approx(0.5 / (0.55 - (0.5 + 0.5 + 0.75) * BORROW / 365), rel=1e-12)
 
 
 def test_a_settlement_stamped_after_its_hour_is_paid_by_the_position_held_into_it(tmp_path, monkeypatch):
@@ -611,14 +651,18 @@ def test_a_daily_bar_pays_each_settlement_it_held_at_on_its_value_then(tmp_path,
     long = pd.DataFrame(1.0, index=p.index, columns=p.ids)               # bought at 100 at the open of 2024-01-02
     k = 2                                                                  # the day of 2024-01-03
     held = bt.run(p, long)
+    # the day before paid three settlements on a value of 100, out of the equity: the same units are 1 / 0.997 of it
+    units = 1.0 / (1.0 - 3 * 0.001)
     # the whole equity held from 100: 0.1% of its value at 08:00 (104), 16:00 (108) and the close (110)
-    assert held.carry.iloc[k] == pytest.approx(0.001 * (104 + 108 + 110) / 100, rel=1e-12)
+    assert held.carry.iloc[k] == pytest.approx(units * 0.001 * (104 + 108 + 110) / 100, rel=1e-12)
     assert bt.funding_held(p).iloc[k, 0] == pytest.approx(0.001 * (104 + 108 + 110) / 100, rel=1e-12)
     stopped = bt.run(p, long, exits=bt.Exits(stop=0.05))                   # stopped at 95 in the minute from 17:00
     assert stopped.exits.iloc[k, 0] == pytest.approx(95.0)
     cost = COSTS["crypto_perp"].commission_bps / 1e4 + COSTS["crypto_perp"].half_spread_bps / 1e4
-    # it held at 08:00 and 16:00, not at midnight; the bar's costs come out of the equity the position is a share of
-    assert stopped.carry.iloc[k] == pytest.approx((1 - cost) * 0.001 * (104 + 108) / 100, rel=1e-12)
+    # it held at 08:00 and 16:00, not at midnight; the bar's costs (the sale at 95) come out of the equity the position
+    # is a share of
+    assert stopped.carry.iloc[k] == pytest.approx((1 - units * cost * 0.95) * units * 0.001 * (104 + 108) / 100,
+                                                  rel=1e-12)
 
 
 def test_an_exit_whose_minute_is_not_known_is_taken_at_the_middle_of_its_bar(tmp_path, monkeypatch):
@@ -626,8 +670,10 @@ def test_an_exit_whose_minute_is_not_known_is_taken_at_the_middle_of_its_bar(tmp
     long = pd.DataFrame(1.0, index=p.index, columns=p.ids)
     stopped = bt.run(p, long, exits=bt.Exits(stop=0.05))
     cost = COSTS["crypto_perp"].commission_bps / 1e4 + COSTS["crypto_perp"].half_spread_bps / 1e4
+    units = 1.0 / (1.0 - 3 * 0.001)                   # the funding paid the day before, as above
     assert stopped.exits.iloc[2, 0] == pytest.approx(95.0)
-    assert stopped.carry.iloc[2] == pytest.approx((1 - cost) * 0.001 * 104 / 100, rel=1e-12)      # 08:00 only
+    assert stopped.carry.iloc[2] == pytest.approx((1 - units * cost * 0.95) * units * 0.001 * 104 / 100,
+                                                  rel=1e-12)                                     # 08:00 only
 
 
 def test_a_bar_with_a_close_and_no_open_is_not_traded_and_its_move_is_held_from_the_close_before():

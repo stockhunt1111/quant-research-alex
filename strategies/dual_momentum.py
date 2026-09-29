@@ -6,14 +6,14 @@ measured, not trusted."""
 from __future__ import annotations
 
 from strategy_lab.data import rates
-from strategy_lab.strategy import bars_in, panel, rebalanced
+from strategy_lab.strategy import as_of, panel, rebalanced
 
 
 @panel(grid={"months": [12], "top_k": [1, 2, 3, 4, 5], "rebalance": ["M"]})
 def dual_momentum(p, months, top_k, rebalance, live):
     """Hold the top_k assets by trailing `months`-month return, each only if that return is above T-bills' over the
     same months; decided at each month's turn."""
-    ret = (p.close / p.close.shift(bars_in(p, months=months)) - 1.0).where(live)
+    ret = (p.close / as_of(p.close, months=months) - 1.0).where(live)
     rank = ret.rank(axis=1, ascending=False, method="first")
     pick = ((rank <= top_k) & ret.gt(rates.trailing_return(p.index, months), axis=0)).astype(float) / top_k
     return rebalanced(pick, rebalance)

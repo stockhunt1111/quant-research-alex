@@ -203,6 +203,18 @@ def _hold_walk(o, c, live, flat, column, quoted, paid, at_open, refills):
     return out
 
 
+def bought_on(live: pd.DataFrame, day: pd.Timestamp) -> pd.DataFrame:
+    """`live` held from the UTC day `day` on: nothing before the last bar of the day before, whose close decides the
+    purchase, so it is bought at the day's first open, as a record's positions held that day were decided at that close
+    (from the start of the day, a market with sessions was bought at the day's second open, its first bar's close
+    deciding: a US stock's buy & hold lost the record's first day)."""
+    bar_day = (live.index - pd.Timedelta(microseconds=1)).tz_convert("UTC").normalize()
+    decided = max(int(bar_day.searchsorted(day, side="left")) - 1, 0)
+    out = live.copy()
+    out.iloc[:decided] = False
+    return out
+
+
 def buy_and_hold(panel: Panel, live: pd.DataFrame, fill: str = "next_open", refills: bool = False) -> pd.Series:
     """Net return per bar of holding `live`'s instruments as the module says; `live` is the list's composition decided
     at each bar's close (an instrument leaves it when it is delisted, on top of what `live` says); an instrument that

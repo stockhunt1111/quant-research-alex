@@ -197,8 +197,11 @@ def prepare(panel, configs, member=None):
             "long_only": [True, False]}, prepare=prepare)
 def ml_direction(bars, horizon, min_train, threshold, long_only):
     """Long while the model's out-of-sample probability of a higher close in `horizon` bars exceeds `threshold`; unless
-    long only, short while it is below 1 - `threshold`."""
+    long only, short while it is below 1 - `threshold`. A bar the model has no prediction for (a feature undefined on
+    it: the internal bar strength of a bar without a range) keeps the position before it: taken flat, gold's quiet
+    hours of 2003-2005, a third of them, closed and reopened its position around each."""
     X = features(bars)
     y = _label(bars, horizon)
     proba = _cached_predictions(X, y, horizon, min_train)
-    return with_short((proba > threshold).astype(float), (proba < 1.0 - threshold).astype(float), long_only)
+    side = with_short((proba > threshold).astype(float), (proba < 1.0 - threshold).astype(float), long_only)
+    return side.where(proba.notna())

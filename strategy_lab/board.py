@@ -279,8 +279,12 @@ def luck_of(returns: pd.DataFrame | list[pd.DataFrame], extra: int = 0, seed: in
     days are: two records that overlap for a tenth of their length share a tenth of their evidence. The same rule on
     nested lists, on neighbouring timeframes or with its model wins and loses with itself: counted as independent
     tries, it would raise the bar a result is judged against as if luck had that many more chances. The correlation is
-    the records' own, not their excess over a shared buy-and-hold, which moves tries on one list closer still: the
-    bar errs on the strict side."""
+    the records' own, which is the Sharpe's; the t against holding moves with the records' excess over holding, less
+    alike across the tries of one list than the records are, so its familywise bar reads lower than it should where
+    the tries share their market (no skill in forty tries that are the list plus noise: a bar of 2.48 where the best t
+    reaches 3.00 one time in twenty). On the saved results of 2026-09-29 the excess's correlation gave 3.79 for the
+    lists against 3.75 (no list's verdict changed; the best t was 3.41) and 3.05 against 3.09 at the median of the
+    instruments."""
     roots = []
     for block in [returns] if isinstance(returns, pd.DataFrame) else returns:
         x = block.to_numpy(dtype=np.float64)
@@ -342,12 +346,11 @@ def _score_root(x: np.ndarray) -> np.ndarray:
 
 
 def _as_independent(expected_best: float, k: int) -> float:
-    """The number of independent standard normal draws whose expected maximum is `expected_best` (1 to `k`); below two
-    draws the count runs straight from one draw (expected maximum 0) to two."""
-    two = significance.expected_max(2)
-    if expected_best <= two:
-        return 1.0 + max(expected_best, 0.0) / two
-    lo, hi = 2.0, float(k)
+    """The number of independent standard normal draws whose expected maximum is `expected_best` (1 to `k`): the
+    count `significance.expected_max` gives that maximum back for, whole or not."""
+    if expected_best <= 0.0:
+        return 1.0
+    lo, hi = 1.0, float(k)
     if significance.expected_max(hi) <= expected_best:
         return hi
     for _ in range(60):

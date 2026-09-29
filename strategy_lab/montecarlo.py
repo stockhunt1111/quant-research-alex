@@ -64,7 +64,7 @@ def _figures(x, first, last, days_per_year):
         dev[i] = (mean - x[i]) * (mean - x[i])
     sd = np.sqrt(_numpy_sum(dev) / (n - 1)) if n > 1 else np.nan
     sharpe = mean / sd * np.sqrt(days_per_year) if n > 1 and sd > 0 else 0.0
-    equity, peak, deepest = 1.0, -np.inf, 0.0
+    equity, peak, deepest = 1.0, 1.0, 0.0             # the account starts at its capital, as metrics.max_drawdown
     for i in range(n):
         equity *= 1.0 + x[i]
         peak = max(peak, equity)

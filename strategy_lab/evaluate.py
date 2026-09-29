@@ -37,7 +37,7 @@ from strategy_lab.config import WF_SCHEMES
 from strategy_lab.data.bars import Panel, load_panel, stored_version
 from strategy_lab.engine import backtest as bt
 from strategy_lab.engine import costs
-from strategy_lab.engine.hold import buy_and_hold, margined, nothing_to_hold
+from strategy_lab.engine.hold import bought_on, buy_and_hold, margined, nothing_to_hold
 from strategy_lab.engine.trades import ledger, trades_of
 from strategy_lab.strategy import Strategy, fill_signals
 from strategy_lab.universes import resolve
@@ -90,13 +90,15 @@ def _run(strategy: Strategy, panel: Panel, cfg: dict, member, fill: str, memo: d
 def _switch_cost(panel: Panel, a: bt.Result | None, b: bt.Result | None, when: pd.Timestamp) -> float:
     """Cost of moving from config a's positions to config b's at the first bar of a new window (None: no position,
     a window no configuration could be chosen for), paid where that bar's fills are: at its open, or at the close
-    before it for next_close fills."""
+    before it for next_close fills. The positions are those held into that bar, each configuration's last fills
+    before it: what b fills on the bar itself is in b's own returns, and a's fills there never happen."""
     k = panel.index.searchsorted(when)
     if k >= len(panel.index) or (a is None and b is None):
         return 0.0
     rates = costs.rates(panel)
     rate = rates.row(k, "at_open") if (a or b).fill == "next_open" else rates.row(max(k - 1, 0), "at_close")
-    held = lambda r: np.zeros(len(panel.ids)) if r is None else r.weights.iloc[k].to_numpy()     # noqa: E731
+    held = lambda r: (np.zeros(len(panel.ids)) if r is None or k == 0          # noqa: E731
+                      else r.weights.iloc[k - 1].to_numpy())
     return float((np.abs(held(a) - held(b)) * rate).sum())
 
 
@@ -258,14 +260,15 @@ def _log_unfunded(name: str, universe: str, timeframe: str, runs: dict[int, bt.R
 
 
 def _buy_and_hold(panel: Panel, member, fill: str, start=None, ranked: bool = False) -> pd.Series:
-    """Daily returns of holding the universe (`engine.hold`), bought on the first bar from `start` on (the first bar
-    when None): a comparison starts where the record it is compared with starts, not with weights drifted since. Zero
+    """Daily returns of holding the universe (`engine.hold`), bought at the first open of the UTC day `start` (the
+    first bar when None; `engine.hold.bought_on`): a comparison starts where the record it is compared with starts, not
+    with weights drifted since. Zero
     when there is nothing to hold (`engine.hold.nothing_to_hold`): cash. `ranked`: the universe is a ranked list, whose
     empty seats newcomers take; else a fixed list (`member` then only says from when it is held), whose leaver's money
     goes to the rest."""
     live = (panel.started if member is None else member).copy()          # `member` is kept for the next job
     if start is not None:
-        live.loc[live.index < start] = False
+        live = bought_on(live, start)
     return metrics.daily_returns(buy_and_hold(panel, live, fill, refills=ranked))
 
 
@@ -309,7 +312,7 @@ def _seats(uni, universe: str, timeframe: str, start, end, seating: Panel) -> pd
     the same names on 1h and 4h as on 1d: a session's intraday bars miss a varying share of its volume (its auctions:
     Twelve Data's hourly bars carry 74-89% of AAPL's and MSFT's daily volume, 91-97% of TSLA's and AMD's), and ranked
     on them the stocks' Top-3 held other names than on its daily bars on a third of the days since 2021. A name holds
-    its daily seat on the intraday bars of the same day while it trades there.
+    its daily seat on the intraday bars that close on the day the seat is in force, while it trades there.
 
     Worked out once per list and candidates' bars, and kept on the panel of those bars (`seating` and the daily one):
     a batch runs a list's jobs one after another, and every job ranks the lists next to it again for its checks
@@ -324,9 +327,13 @@ def _seats(uni, universe: str, timeframe: str, start, end, seating: Panel) -> pd
             if key not in ranked_on.memo:
                 ranked_on.memo[key] = daily.member(ranked_on)
             seats = ranked_on.memo[key]
-            day = lambda idx: (idx - pd.Timedelta(microseconds=1)).normalize()            # noqa: E731
-            on_bars = (seats.groupby(day(seats.index)).max().reindex(day(seating.index)).reindex(columns=seating.ids)
-                       .eq(True))
+            # the names in force on each day, from the daily bar that closes on it (a coin's closes at the day's first
+            # instant, a stock's in its evening), held on the intraday bars that close on it, and on the days after the
+            # last daily bar until a daily bar says otherwise (a day's daily bar is stored once the day is over)
+            on_day = seats.groupby(seats.index.normalize()).max()
+            days = seating.index.normalize()
+            on_bars = (on_day.reindex(on_day.index.union(days.unique())).ffill().reindex(days)
+                       .reindex(columns=seating.ids).eq(True))
             on_bars.index = seating.index
             seating.memo[key] = on_bars & seating.started & ~bt.ended(seating)
     return seating.memo[key].copy()
@@ -447,7 +454,7 @@ def _scored(strategy, universe, timeframe, start, end, panel, member, configs, n
     # nothing for it, and Monte Carlo and random timing were a third of an evaluation
     earns = bool(oos_card["sharpe"] > 0 and oos_card["cagr"] > 0)
     mc = montecarlo.bootstrap(oos) if monte_carlo and earns else {}
-    timing = _random_timing(panel, held.weights, span, fill) if earns else {}
+    timing = _random_timing(panel, held.weights, span, fill, member) if earns else {}
     checks = None
     trades = held.trades
     if earns:
@@ -464,12 +471,15 @@ def _scored(strategy, universe, timeframe, start, end, panel, member, configs, n
                       robustness=checks)
 
 
-def _random_timing(panel: Panel, weights: pd.DataFrame, span: pd.DatetimeIndex, fill: str) -> dict:
-    """`significance.random_timing` of the OOS record; its valuation follows next-open fills only."""
+def _random_timing(panel: Panel, weights: pd.DataFrame, span: pd.DatetimeIndex, fill: str,
+                   member: pd.DataFrame | None = None) -> dict:
+    """`significance.random_timing` of the OOS record, its rotations held to the bars a name is in the list or held
+    (`member`: the list's names; None, an instrument alone: every bar it printed); its valuation follows next-open
+    fills only."""
     if fill != "next_open":
         LOG.info("random timing is valued for next-open fills: not measured on a %s run", fill)
         return {}
-    return significance.random_timing(panel, weights, span)
+    return significance.random_timing(panel, weights, span, member=member)
 
 
 def _save(ev: Evaluation, description: str, fill: str, seconds: float) -> None:

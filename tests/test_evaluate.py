@@ -245,7 +245,7 @@ def test_the_records_trades_are_the_positions_its_windows_held_one_after_another
 
 
 def test_a_fixed_list_scored_from_its_half_is_held_as_a_fixed_list(monkeypatch):
-    from strategy_lab.engine.hold import buy_and_hold
+    from strategy_lab.engine.hold import bought_on, buy_and_hold
     p = make_panel(ids=("td:AAA", "td:BBB", "td:CCC", "td:DDD"), n=900, seed=9)
     for f in FIELDS:
         getattr(p, f).iloc[:100, 1:] = np.nan                  # three names start at bar 100: half held from there
@@ -256,8 +256,7 @@ def test_a_fixed_list_scored_from_its_half_is_held_as_a_fixed_list(monkeypatch):
     e = ev.evaluate(ibs_reversion, "four", "1d", monte_carlo=False, robustness=False, save=False)
     _, panel, member = ev._load("four", "1d", None, None)
     assert member is not None                                  # a mask: the list is scored from its half only
-    live = member.copy()
-    live.loc[live.index < e.oos_daily.index[0]] = False
+    live = bought_on(member, e.oos_daily.index[0])            # bought at the record's first open
     fixed = ev.metrics.daily_returns(buy_and_hold(panel, live, "next_open", refills=False))
     waits = ev.metrics.daily_returns(buy_and_hold(panel, live, "next_open", refills=True))
     days = e.oos_daily.index

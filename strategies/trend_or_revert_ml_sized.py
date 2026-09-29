@@ -19,4 +19,6 @@ def trend_or_revert_ml_sized(bars, adx_threshold, k, rsi_entry):
     state = regimes.confirmed(regimes.trend_state(bars, adx_threshold=adx_threshold), k)
     fast, slow = ind.ema(bars.close, 20), ind.ema(bars.close, 50)
     r, mean = ind.rsi(bars.close, 2), ind.sma(bars.close, 5)
-    return regimes.switch(state, {1.0: (fast > slow).astype(float), 0.0: hold_between(r < rsi_entry, bars.close > mean)})
+    # a dip is bought only while the market ranges: one bought in a trend would become a position at the switch
+    dips = hold_between((r < rsi_entry) & (state == 0.0), bars.close > mean)
+    return regimes.switch(state, {1.0: (fast > slow).astype(float), 0.0: dips})

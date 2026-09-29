@@ -10,7 +10,8 @@ from strategy_lab.strategy import rule
 
 @rule(grid={"fast": [10, 20, 50], "slow": [100, 200, 300], "k": [3, 5, 10], "max_vol_state": [0, 1]})
 def calm_trend(bars, fast, slow, k, max_vol_state):
-    """Trend (long while the fast EMA is above the slow one) held only while volatility has been calm/normal for k bars
-    in a row."""
+    """Trend (long while the fast EMA is above the slow one) held only while the volatility regime is at most
+    `max_vol_state` (0 calm, 1 normal), a regime taking effect once it has held k bars in a row (`regimes.confirmed`:
+    calm and normal bars that alternate confirm neither, and the regime before stands)."""
     calm = regimes.confirmed(regimes.vol_state(bars.close), k) <= max_vol_state
     return (calm & (ind.ema(bars.close, fast) > ind.ema(bars.close, slow))).astype(float)

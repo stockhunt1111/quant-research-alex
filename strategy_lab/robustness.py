@@ -186,7 +186,9 @@ def pbo(fit: Fit) -> dict:
     for half in itertools.combinations(range(PBO_BLOCKS), PBO_BLOCKS // 2):
         best = int(np.argmax(sharpe(half)))
         rank = stats.rankdata(sharpe(sorted(everything - set(half))))[best]          # 1: the worst
-        below += rank / (len(fit.configs) + 1) < 0.5
+        # at or below the median, the paper's logit of the relative rank at most zero: counted strictly below, the
+        # median of an odd grid passed as not overfitted, and a grid of five with no skill passed two times in three
+        below += rank / (len(fit.configs) + 1) <= 0.5
         splits += 1
     return {"pbo": below / splits, "configs": len(fit.configs), "splits": splits, "blocks": PBO_BLOCKS}
 
@@ -264,9 +266,18 @@ def _over(fit: Fit, daily: pd.Series) -> dict:
     return _figures(daily.reindex(fit.oos.index).fillna(0.0))
 
 
+def _ordered(values: list) -> bool:
+    """Whether a parameter's grid values have neighbours one step apart: numbers in their order (None, a level
+    switched off, among them), or a switch's two values. Choices without an order have none: ml_feature_search's
+    indicator families one place apart in its list are no nearer than any two."""
+    return len(values) == 2 or all(v is None or (isinstance(v, (int, float)) and not isinstance(v, bool))
+                                   for v in values)
+
+
 def plateau(fit: Fit) -> dict:
     """The configuration the windows chose most (the latest of those chosen as often) and the Sharpe over the
-    out-of-sample days of each configuration one grid step away along one parameter."""
+    out-of-sample days of each configuration one grid step away along one parameter whose values are ordered
+    (`_ordered`)."""
     if len(fit.configs) < 2:
         return {"na": "one configuration: no neighbours"}
     chosen = [c for c in fit.choices if c is not None]
@@ -278,7 +289,7 @@ def plateau(fit: Fit) -> dict:
         moved = [k for k in here if cfg[k] != here[k]]
         if len(moved) == 1:
             values = list(fit.strategy.grid[moved[0]])
-            if abs(values.index(cfg[moved[0]]) - values.index(here[moved[0]])) == 1:
+            if _ordered(values) and abs(values.index(cfg[moved[0]]) - values.index(here[moved[0]])) == 1:
                 near.append({"params": {moved[0]: cfg[moved[0]]}, **_over(fit, fit.daily[j])})
     if not near:
         return {"na": "no configuration one step away"}
@@ -286,7 +297,9 @@ def plateau(fit: Fit) -> dict:
 
 
 def _has_model(s: Strategy) -> bool:
-    return s.grade is not None or s.prepare is not None
+    """A grade's model (`trade_model`), or a model the strategy's own module fits and draws with its SEED: in a
+    `prepare` step (ml_direction) or in the rule itself (`rule(model=True)`: ml_feature_search)."""
+    return s.grade is not None or s.prepare is not None or s.model
 
 
 @contextmanager
@@ -307,12 +320,15 @@ def seeds(fit: Fit) -> dict:
     if not _has_model(s):
         return {"na": "no model"}
     sharpes, cagrs = [], []
+    # a grade's rule gives the same positions whatever the seed, and they are kept; a rule whose own function fits the
+    # model gives others, which neither the kept positions nor those on disk hold
+    signals = fit.signals if s.grade is not None else None
     for seed in SEEDS:
         with _model_seed(s, seed):
             undo = s.prepare(fit.panel, fit.configs, fit.member) if s.prepare is not None else None
             try:
                 memo: dict = {}                 # the positions kept by configuration do not know the seed
-                runs = {c: ev._run(s, fit.panel, fit.configs[c], fit.member, fit.fill, memo, signals=fit.signals)
+                runs = {c: ev._run(s, fit.panel, fit.configs[c], fit.member, fit.fill, memo, signals=signals)
                         for c in _chosen(fit)}
             finally:
                 if undo is not None:
@@ -341,7 +357,7 @@ def vs_rule(fit: Fit) -> dict:
     has nothing to choose on and holds nothing, and the model's worth is measured where it grades."""
     s = fit.strategy
     if s.grade is None:
-        return {"na": "no rule under the model" if s.prepare is not None else "no model"}
+        return {"na": "no rule under the model" if _has_model(s) else "no model"}
     keys = s.grade_keys()
     plain = dataclasses.replace(s, grade=None, grid={k: v for k, v in s.grid.items() if k not in keys})
     memo: dict = {}                             # not the graded rule's: a sizing grade keeps the same keys

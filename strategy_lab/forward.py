@@ -20,12 +20,11 @@ from datetime import datetime, timezone
 import numpy as np
 import pandas as pd
 
-from strategy_lab import db, log
+from strategy_lab import db, evaluate, log
 from strategy_lab.config import DATA_DIR
-from strategy_lab.data.bars import Panel, load_panel
+from strategy_lab.data.bars import Panel
 from strategy_lab.engine import backtest as bt
 from strategy_lab.strategy import load
-from strategy_lab.universes import resolve
 
 LOG = log.get("forward")
 STATE_DIR = DATA_DIR / "forward"
@@ -63,9 +62,8 @@ def latest_targets(strategy, universe: str, timeframe: str, params: dict,
     """Targets at the last closed bar, and the bars they come from. Refuses stale data (a plan on a weeks-old bar is
     not a forward test) and leaves out instruments without a bar at that time: their last price is older than the
     plan."""
-    uni = resolve(universe, timeframe)
-    panel = load_panel(uni.ids, timeframe)
-    member = uni.member(panel) if uni.member else None
+    # the list's names as its evaluation holds them: a ranked list's seats come from its daily bars on every timeframe
+    _, panel, member = evaluate._load(universe, timeframe, None, None, keep=False)
     tgt = strategy.target(panel, params, member)
     last = tgt.index.max()
     now = now or pd.Timestamp.now(tz="UTC")
