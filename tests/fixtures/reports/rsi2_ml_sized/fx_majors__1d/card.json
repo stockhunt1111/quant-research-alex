@@ -1,0 +1,294 @@
+{
+ "strategy": "rsi2_ml_sized",
+ "universe": "fx_majors",
+ "timeframe": "1d",
+ "notes": [],
+ "out_of_sample": {
+  "start": "2004-05-04",
+  "end": "2026-09-25",
+  "months": 267,
+  "avg_monthly": 5.181660773878605e-05,
+  "median_monthly": 0.0,
+  "pct_green": 0.40823970037453183,
+  "pct_red": 0.299625468164794,
+  "months_active": 189,
+  "pct_months_active": 0.7078651685393258,
+  "pct_green_active": 0.5767195767195767,
+  "pct_red_active": 0.42328042328042326,
+  "worst_month": -0.011219339509490167,
+  "best_month": 0.006881866000696402,
+  "longest_red_streak": 4,
+  "cagr": 0.0006219765308927983,
+  "ann_vol": 0.005419860701812553,
+  "sharpe": 0.11743336533305397,
+  "sortino": 0.06241546033100381,
+  "max_dd": -0.014136026860093298,
+  "max_dd_days": 6123,
+  "n_trades": 394,
+  "trades_per_month": 1.4756554307116105,
+  "win_rate": 0.6015228426395939,
+  "avg_trade": 5.424123638838869e-06,
+  "median_trade_bars": 4.0,
+  "time_in_market": 0.251672671127123,
+  "avg_gross": 0.016818842152468108,
+  "bh_avg_monthly": 0.0,
+  "bh_pct_green": 0.0,
+  "bh_sharpe": 0.0,
+  "bh_max_dd": 0.0,
+  "bh_cagr": 0.0,
+  "bh_cash": true,
+  "vs_bh": 0.0005046700069475385,
+  "beats_bh": true,
+  "targets": {
+   "avg_monthly>=1.5%": false,
+   "green_months>=70%": false,
+   "max_dd>=-10%": true,
+   "sharpe>=1": false,
+   "beats_buy_and_hold": true
+  },
+  "targets_met": 2
+ },
+ "in_sample": {
+  "start": "2004-05-04",
+  "end": "2026-09-25",
+  "months": 267,
+  "avg_monthly": 3.010021918847805e-05,
+  "median_monthly": 0.0,
+  "pct_green": 0.3595505617977528,
+  "pct_red": 0.24344569288389514,
+  "months_active": 161,
+  "pct_months_active": 0.602996254681648,
+  "pct_green_active": 0.5962732919254659,
+  "pct_red_active": 0.40372670807453415,
+  "worst_month": -0.0028844692853021714,
+  "best_month": 0.00394491376664563,
+  "longest_red_streak": 4,
+  "cagr": 0.0003612624337931969,
+  "ann_vol": 0.0025370693770812676,
+  "sharpe": 0.14363607953449656,
+  "sortino": 0.07591769427889407,
+  "max_dd": -0.008198929462603921,
+  "max_dd_days": 3191,
+  "n_trades": 273,
+  "trades_per_month": 1.0224719101123596,
+  "win_rate": 0.5970695970695971,
+  "avg_trade": -0.00018622931629173452,
+  "median_trade_bars": 4.0,
+  "time_in_market": 0.18682449819866187,
+  "avg_gross": 0.009755301406786933,
+  "bh_avg_monthly": 0.0,
+  "bh_pct_green": 0.0,
+  "bh_sharpe": 0.0,
+  "bh_max_dd": 0.0,
+  "bh_cagr": 0.0,
+  "bh_cash": true,
+  "vs_bh": 0.00028527700213576423,
+  "beats_bh": true,
+  "targets": {
+   "avg_monthly>=1.5%": false,
+   "green_months>=70%": false,
+   "max_dd>=-10%": true,
+   "sharpe>=1": false,
+   "beats_buy_and_hold": true
+  },
+  "targets_met": 2
+ },
+ "in_sample_params": {
+  "rsi_entry": 5,
+  "exit_rsi": 70,
+  "slots": 10
+ },
+ "monte_carlo": {
+  "reps": 1000,
+  "block_days": 3.7,
+  "avg_monthly": {
+   "p5": -9.393625566659902e-05,
+   "p50": 5.480311019745443e-05,
+   "p95": 0.00019419677832048786
+  },
+  "pct_green_active": {
+   "p5": 0.47876447876447875,
+   "p50": 0.5325670498084292,
+   "p95": 0.5813953488372093
+  },
+  "max_dd": {
+   "p5": -0.04522417481267903,
+   "p50": -0.021813030945546652,
+   "p95": -0.011652318517713936
+  },
+  "sharpe": {
+   "p5": -0.19656610994786772,
+   "p50": 0.12471314562255875,
+   "p95": 0.4423148530513658
+  },
+  "worst_month": {
+   "p5": -0.01404559458259766,
+   "p50": -0.008859878700233026,
+   "p95": -0.004565050552721267
+  },
+  "prob_avg_monthly_below_target": 1.0,
+  "prob_max_dd_beyond_target": 0.0
+ },
+ "random_timing": {
+  "sharpe": 0.1181156122697099,
+  "null_median": -0.01916490574525537,
+  "null_p95": 0.3346637558035534,
+  "p": 0.2634730538922156,
+  "rotations": 500
+ },
+ "robustness": {
+  "luck": {
+   "mc_sharpe_p5": -0.19656610994786772
+  },
+  "timing": {
+   "p": 0.2634730538922156,
+   "null_median": -0.01916490574525537
+  },
+  "vs_hold": {
+   "t": 0.6031667499305239,
+   "sharpe": 0.11743336533305397,
+   "sharpe_other": 0.0,
+   "reps": 1000,
+   "block_days": 20
+  },
+  "pbo": {
+   "pbo": 0.746031746031746,
+   "configs": 6,
+   "splits": 252,
+   "blocks": 10
+  },
+  "eras": {
+   "rho": 0.4886646589967597,
+   "sharpes": [
+    0.0,
+    0.5976249824384506,
+    0.35168676885809325,
+    -0.2245351389394312,
+    0.2371343915093551,
+    -0.7862064526644107,
+    -0.017180383128895586,
+    1.0869775375657564,
+    0.6186158646824276,
+    -0.9780244258377403,
+    -0.40086103069011875
+   ],
+   "window_days": 730
+  },
+  "names": {
+   "instruments": 7,
+   "positive": 6,
+   "share": 0.8571428571428571
+  },
+  "costs": {
+   "multiple": 3.0,
+   "sharpe": 0.05103674717419762,
+   "cagr": 0.00026185165217906814
+  },
+  "delay": {
+   "sharpe": 0.029644476441721603,
+   "cagr": 0.00014700076041607169
+  },
+  "plateau": {
+   "config": {
+    "rsi_entry": 5,
+    "exit_rsi": 70,
+    "slots": 10
+   },
+   "sharpe": 0.14363607953449656,
+   "neighbours": [
+    {
+     "params": {
+      "slots": 5
+     },
+     "sharpe": 0.14355598274406958,
+     "cagr": 0.0007158116801080361
+    },
+    {
+     "params": {
+      "rsi_entry": 10
+     },
+     "sharpe": 0.07071383463596337,
+     "cagr": 0.00027376190914973897
+    }
+   ]
+  },
+  "vs_rule": {
+   "t": -1.0766694656470959,
+   "sharpe": 0.11743336533305397,
+   "reps": 1000,
+   "block_days": 20,
+   "sharpe_plain": 0.21995840982604273
+  },
+  "seeds": {
+   "seeds": [
+    1,
+    2,
+    3,
+    4
+   ],
+   "sharpes": [
+    0.09928186582518755,
+    0.12878843333190643,
+    0.14975266974385895,
+    0.13200318364082433
+   ],
+   "cagrs": [
+    0.0005203437555285628,
+    0.0006861352047777824,
+    0.0007827781784821575,
+    0.0006855157432046344
+   ]
+  },
+  "neighbour_lists": {
+   "na": "not a Top-N list"
+  },
+  "seconds": {
+   "luck": 0.0,
+   "timing": 0.0,
+   "vs_hold": 0.174,
+   "pbo": 0.014,
+   "eras": 0.0,
+   "names": 0.001,
+   "costs": 0.015,
+   "delay": 0.036,
+   "plateau": 0.005,
+   "vs_rule": 0.205,
+   "seeds": 0.16,
+   "neighbour_lists": 0.0
+  }
+ },
+ "code": {
+  "files": [
+   "strategy_lab/__init__.py",
+   "strategy_lab/config.py",
+   "strategy_lab/data/__init__.py",
+   "strategy_lab/data/bars.py",
+   "strategy_lab/data/calendars.py",
+   "strategy_lab/data/instruments.py",
+   "strategy_lab/data/integrity.py",
+   "strategy_lab/data/rates.py",
+   "strategy_lab/data/resample.py",
+   "strategy_lab/data/sharadar.py",
+   "strategy_lab/data/store.py",
+   "strategy_lab/engine/__init__.py",
+   "strategy_lab/engine/backtest.py",
+   "strategy_lab/engine/hold.py",
+   "strategy_lab/engine/trades.py",
+   "strategy_lab/evaluate.py",
+   "strategy_lab/indicators.py",
+   "strategy_lab/metrics.py",
+   "strategy_lab/ml.py",
+   "strategy_lab/montecarlo.py",
+   "strategy_lab/per_asset.py",
+   "strategy_lab/regimes.py",
+   "strategy_lab/robustness.py",
+   "strategy_lab/significance.py",
+   "strategy_lab/strategy.py",
+   "strategy_lab/trade_model.py",
+   "strategy_lab/universes.py",
+   "strategy_lab/walkforward.py",
+   "strategies/rsi2_ml_sized.py"
+  ],
+  "sha": "ba2a122da7c3bf3e"
+ }
+}

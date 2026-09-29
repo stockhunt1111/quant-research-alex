@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "strategy-lab"
+version = "0.1.0"
+description = "Strategy research engine: one-call evaluation of a strategy against the firm's target"
+requires-python = ">=3.12,<3.13"
+# Pinned: every reported number must be reproducible from a clean install.
+dependencies = [
+    "numpy==1.26.4",
+    "pandas==2.2.3",
+    "pyarrow==17.0.0",
+    "pandas-market-calendars==5.4.0",
+    "requests==2.34.2",
+    "scipy==1.14.1",
+    "arch==8.0.0",
+    "TA-Lib==0.8.1",
+    "numba==0.67.0",
+    "databento==0.87.0",
+]
+
+[project.optional-dependencies]
+ml = ["scikit-learn==1.5.2", "lightgbm==4.7.0"]
+# the server of the web UI (server/): the research engine and its batches run without it
+web = ["fastapi==0.141.1", "uvicorn==0.54.0"]
+dev = ["pytest==9.1.1", "ruff==0.16.1", "httpx2==2.13.1"]
+
+[tool.setuptools.packages.find]
+include = ["strategy_lab*", "strategies*", "server*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["F", "E9"]

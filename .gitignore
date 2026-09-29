@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.env
+/data/
+/reports/
+/logs/
+/db/
+/ui/web/node_modules/
+/ui/web/dist/
+/ui/web/check/out/
+/CLAUDE.md
+/docs/

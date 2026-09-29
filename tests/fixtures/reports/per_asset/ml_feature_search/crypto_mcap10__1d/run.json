@@ -1,0 +1,512 @@
+{
+ "strategy": "ml_feature_search",
+ "universe": "crypto_mcap10",
+ "timeframe": "1d",
+ "configs": [
+  {
+   "families": [
+    "trend"
+   ],
+   "threshold": 0.5
+  },
+  {
+   "families": [
+    "trend"
+   ],
+   "threshold": 0.55
+  },
+  {
+   "families": [
+    "momentum"
+   ],
+   "threshold": 0.5
+  },
+  {
+   "families": [
+    "momentum"
+   ],
+   "threshold": 0.55
+  },
+  {
+   "families": [
+    "reversion"
+   ],
+   "threshold": 0.5
+  },
+  {
+   "families": [
+    "reversion"
+   ],
+   "threshold": 0.55
+  },
+  {
+   "families": [
+    "volatility"
+   ],
+   "threshold": 0.5
+  },
+  {
+   "families": [
+    "volatility"
+   ],
+   "threshold": 0.55
+  },
+  {
+   "families": [
+    "volume"
+   ],
+   "threshold": 0.5
+  },
+  {
+   "families": [
+    "volume"
+   ],
+   "threshold": 0.55
+  },
+  {
+   "families": [
+    "trend",
+    "momentum"
+   ],
+   "threshold": 0.5
+  },
+  {
+   "families": [
+    "trend",
+    "momentum"
+   ],
+   "threshold": 0.55
+  },
+  {
+   "families": [
+    "trend",
+    "reversion"
+   ],
+   "threshold": 0.5
+  },
+  {
+   "families": [
+    "trend",
+    "reversion"
+   ],
+   "threshold": 0.55
+  },
+  {
+   "families": [
+    "trend",
+    "volatility"
+   ],
+   "threshold": 0.5
+  },
+  {
+   "families": [
+    "trend",
+    "volatility"
+   ],
+   "threshold": 0.55
+  },
+  {
+   "families": [
+    "trend",
+    "volume"
+   ],
+   "threshold": 0.5
+  },
+  {
+   "families": [
+    "trend",
+    "volume"
+   ],
+   "threshold": 0.55
+  },
+  {
+   "families": [
+    "momentum",
+    "reversion"
+   ],
+   "threshold": 0.5
+  },
+  {
+   "families": [
+    "momentum",
+    "reversion"
+   ],
+   "threshold": 0.55
+  },
+  {
+   "families": [
+    "momentum",
+    "volatility"
+   ],
+   "threshold": 0.5
+  },
+  {
+   "families": [
+    "momentum",
+    "volatility"
+   ],
+   "threshold": 0.55
+  },
+  {
+   "families": [
+    "momentum",
+    "volume"
+   ],
+   "threshold": 0.5
+  },
+  {
+   "families": [
+    "momentum",
+    "volume"
+   ],
+   "threshold": 0.55
+  },
+  {
+   "families": [
+    "reversion",
+    "volatility"
+   ],
+   "threshold": 0.5
+  },
+  {
+   "families": [
+    "reversion",
+    "volatility"
+   ],
+   "threshold": 0.55
+  },
+  {
+   "families": [
+    "reversion",
+    "volume"
+   ],
+   "threshold": 0.5
+  },
+  {
+   "families": [
+    "reversion",
+    "volume"
+   ],
+   "threshold": 0.55
+  },
+  {
+   "families": [
+    "volatility",
+    "volume"
+   ],
+   "threshold": 0.5
+  },
+  {
+   "families": [
+    "volatility",
+    "volume"
+   ],
+   "threshold": 0.55
+  },
+  {
+   "families": [
+    "trend",
+    "momentum",
+    "reversion"
+   ],
+   "threshold": 0.5
+  },
+  {
+   "families": [
+    "trend",
+    "momentum",
+    "reversion"
+   ],
+   "threshold": 0.55
+  },
+  {
+   "families": [
+    "trend",
+    "momentum",
+    "volatility"
+   ],
+   "threshold": 0.5
+  },
+  {
+   "families": [
+    "trend",
+    "momentum",
+    "volatility"
+   ],
+   "threshold": 0.55
+  },
+  {
+   "families": [
+    "trend",
+    "momentum",
+    "volume"
+   ],
+   "threshold": 0.5
+  },
+  {
+   "families": [
+    "trend",
+    "momentum",
+    "volume"
+   ],
+   "threshold": 0.55
+  },
+  {
+   "families": [
+    "trend",
+    "reversion",
+    "volatility"
+   ],
+   "threshold": 0.5
+  },
+  {
+   "families": [
+    "trend",
+    "reversion",
+    "volatility"
+   ],
+   "threshold": 0.55
+  },
+  {
+   "families": [
+    "trend",
+    "reversion",
+    "volume"
+   ],
+   "threshold": 0.5
+  },
+  {
+   "families": [
+    "trend",
+    "reversion",
+    "volume"
+   ],
+   "threshold": 0.55
+  },
+  {
+   "families": [
+    "trend",
+    "volatility",
+    "volume"
+   ],
+   "threshold": 0.5
+  },
+  {
+   "families": [
+    "trend",
+    "volatility",
+    "volume"
+   ],
+   "threshold": 0.55
+  },
+  {
+   "families": [
+    "momentum",
+    "reversion",
+    "volatility"
+   ],
+   "threshold": 0.5
+  },
+  {
+   "families": [
+    "momentum",
+    "reversion",
+    "volatility"
+   ],
+   "threshold": 0.55
+  },
+  {
+   "families": [
+    "momentum",
+    "reversion",
+    "volume"
+   ],
+   "threshold": 0.5
+  },
+  {
+   "families": [
+    "momentum",
+    "reversion",
+    "volume"
+   ],
+   "threshold": 0.55
+  },
+  {
+   "families": [
+    "momentum",
+    "volatility",
+    "volume"
+   ],
+   "threshold": 0.5
+  },
+  {
+   "families": [
+    "momentum",
+    "volatility",
+    "volume"
+   ],
+   "threshold": 0.55
+  },
+  {
+   "families": [
+    "reversion",
+    "volatility",
+    "volume"
+   ],
+   "threshold": 0.5
+  },
+  {
+   "families": [
+    "reversion",
+    "volatility",
+    "volume"
+   ],
+   "threshold": 0.55
+  },
+  {
+   "families": [
+    "trend",
+    "momentum",
+    "reversion",
+    "volatility"
+   ],
+   "threshold": 0.5
+  },
+  {
+   "families": [
+    "trend",
+    "momentum",
+    "reversion",
+    "volatility"
+   ],
+   "threshold": 0.55
+  },
+  {
+   "families": [
+    "trend",
+    "momentum",
+    "reversion",
+    "volume"
+   ],
+   "threshold": 0.5
+  },
+  {
+   "families": [
+    "trend",
+    "momentum",
+    "reversion",
+    "volume"
+   ],
+   "threshold": 0.55
+  },
+  {
+   "families": [
+    "trend",
+    "momentum",
+    "volatility",
+    "volume"
+   ],
+   "threshold": 0.5
+  },
+  {
+   "families": [
+    "trend",
+    "momentum",
+    "volatility",
+    "volume"
+   ],
+   "threshold": 0.55
+  },
+  {
+   "families": [
+    "trend",
+    "reversion",
+    "volatility",
+    "volume"
+   ],
+   "threshold": 0.5
+  },
+  {
+   "families": [
+    "trend",
+    "reversion",
+    "volatility",
+    "volume"
+   ],
+   "threshold": 0.55
+  },
+  {
+   "families": [
+    "momentum",
+    "reversion",
+    "volatility",
+    "volume"
+   ],
+   "threshold": 0.5
+  },
+  {
+   "families": [
+    "momentum",
+    "reversion",
+    "volatility",
+    "volume"
+   ],
+   "threshold": 0.55
+  },
+  {
+   "families": [
+    "trend",
+    "momentum",
+    "reversion",
+    "volatility",
+    "volume"
+   ],
+   "threshold": 0.5
+  },
+  {
+   "families": [
+    "trend",
+    "momentum",
+    "reversion",
+    "volatility",
+    "volume"
+   ],
+   "threshold": 0.55
+  }
+ ],
+ "notes": [
+  "the 10 largest coins by market capitalisation on 2026-09-24 (CoinGecko) with a Binance spot market, each over its whole Binance history: today's largest coins survived to be so, so long-only results are biased upward",
+  "skipped on the way down the ranking: USDT (stablecoin), USDC (stablecoin), FIGR_HELOC (no Binance spot history), HYPE (no Binance spot history), XMR (Binance spot halted since 2024-02-21), WBT (no Binance spot history), USDS (stablecoin)"
+ ],
+ "code": {
+  "files": [
+   "strategy_lab/__init__.py",
+   "strategy_lab/config.py",
+   "strategy_lab/data/__init__.py",
+   "strategy_lab/data/bars.py",
+   "strategy_lab/data/calendars.py",
+   "strategy_lab/data/instruments.py",
+   "strategy_lab/data/integrity.py",
+   "strategy_lab/data/resample.py",
+   "strategy_lab/data/store.py",
+   "strategy_lab/engine/__init__.py",
+   "strategy_lab/engine/backtest.py",
+   "strategy_lab/engine/trades.py",
+   "strategy_lab/evaluate.py",
+   "strategy_lab/indicators.py",
+   "strategy_lab/metrics.py",
+   "strategy_lab/ml.py",
+   "strategy_lab/montecarlo.py",
+   "strategy_lab/per_asset.py",
+   "strategy_lab/regimes.py",
+   "strategy_lab/significance.py",
+   "strategy_lab/strategy.py",
+   "strategy_lab/trade_model.py",
+   "strategy_lab/universes.py",
+   "strategy_lab/walkforward.py",
+   "strategies/ml_feature_search.py"
+  ],
+  "sha": "16a09234802d805a"
+ },
+ "min_months": 6
+}

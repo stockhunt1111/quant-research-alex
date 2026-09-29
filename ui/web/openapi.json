@@ -1,0 +1,3604 @@
+{
+ "openapi": "3.1.0",
+ "info": {
+  "title": "Strategy Lab",
+  "version": "1"
+ },
+ "paths": {
+  "/api/research/meta": {
+   "get": {
+    "summary": "Meta",
+    "operationId": "meta_api_research_meta_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Meta"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/research/lists": {
+   "get": {
+    "summary": "List Rows",
+    "description": "Every result of a strategy on one of our lists, judged, in the board's order.",
+    "operationId": "list_rows_api_research_lists_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ListRows"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/research/assets": {
+   "get": {
+    "summary": "Asset Rows",
+    "description": "Every strategy alone on an instrument, once a (strategy, instrument, timeframe).",
+    "operationId": "asset_rows_api_research_assets_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/AssetRows"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/research/result": {
+   "get": {
+    "summary": "Result",
+    "operationId": "result_api_research_result_get",
+    "parameters": [
+     {
+      "name": "key",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "string",
+       "title": "Key"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ResultView"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/research/curves": {
+   "get": {
+    "summary": "Curves",
+    "operationId": "curves_api_research_curves_get",
+    "parameters": [
+     {
+      "name": "keys",
+      "in": "query",
+      "required": true,
+      "schema": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       },
+       "maxItems": 16,
+       "title": "Keys"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Curves"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/runs/current": {
+   "get": {
+    "summary": "Run Current",
+    "operationId": "run_current_api_runs_current_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RunCurrent"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/runs": {
+   "post": {
+    "summary": "Run Start",
+    "operationId": "run_start_api_runs_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RunStart"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "202": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RunAccepted"
+        }
+       }
+      }
+     },
+     "409": {
+      "description": "Conflict",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Refusal"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/runs/{run_id}/stop": {
+   "post": {
+    "summary": "Run Stop",
+    "operationId": "run_stop_api_runs__run_id__stop_post",
+    "parameters": [
+     {
+      "name": "run_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Run Id"
+      }
+     }
+    ],
+    "responses": {
+     "202": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RunAccepted"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Refusal"
+        }
+       }
+      },
+      "description": "Conflict"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/runs/{run_id}/resume": {
+   "post": {
+    "summary": "Run Resume",
+    "operationId": "run_resume_api_runs__run_id__resume_post",
+    "parameters": [
+     {
+      "name": "run_id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer",
+       "title": "Run Id"
+      }
+     }
+    ],
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/RunResume"
+       }
+      }
+     }
+    },
+    "responses": {
+     "202": {
+      "description": "Successful Response",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RunAccepted"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "Not Found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Refusal"
+        }
+       }
+      },
+      "description": "Conflict"
+     },
+     "422": {
+      "description": "Validation Error",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/api/events": {
+   "get": {
+    "summary": "Events",
+    "description": "hello on connecting; then results, judged, code, run and reset as they happen (server.live).",
+    "operationId": "events_api_events_get",
+    "responses": {
+     "200": {
+      "description": "Successful Response",
+      "content": {
+       "text/event-stream": {
+        "itemSchema": {
+         "type": "object",
+         "properties": {
+          "data": {
+           "type": "string"
+          },
+          "event": {
+           "type": "string"
+          },
+          "id": {
+           "type": "string"
+          },
+          "retry": {
+           "type": "integer",
+           "minimum": 0
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  }
+ },
+ "components": {
+  "schemas": {
+   "Alone": {
+    "properties": {
+     "key": {
+      "type": "string",
+      "title": "Key"
+     },
+     "sharpe": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Sharpe"
+     },
+     "vs_bh": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Vs Bh"
+     },
+     "beats_bh": {
+      "type": "boolean",
+      "title": "Beats Bh"
+     },
+     "stale": {
+      "type": "boolean",
+      "title": "Stale"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "key",
+     "sharpe",
+     "vs_bh",
+     "beats_bh",
+     "stale"
+    ],
+    "title": "Alone"
+   },
+   "AssetInfo": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "title": "Id"
+     },
+     "label": {
+      "type": "string",
+      "title": "Label"
+     },
+     "market": {
+      "type": "string",
+      "title": "Market"
+     },
+     "liquidity": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Liquidity"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "id",
+     "label",
+     "market",
+     "liquidity"
+    ],
+    "title": "AssetInfo"
+   },
+   "AssetRow": {
+    "properties": {
+     "key": {
+      "type": "string",
+      "title": "Key"
+     },
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "strategy": {
+      "type": "string",
+      "title": "Strategy"
+     },
+     "list_id": {
+      "type": "string",
+      "title": "List Id"
+     },
+     "timeframe": {
+      "type": "string",
+      "enum": [
+       "1h",
+       "4h",
+       "1d"
+      ],
+      "title": "Timeframe"
+     },
+     "start": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Start"
+     },
+     "end": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "End"
+     },
+     "months": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Months"
+     },
+     "avg_monthly": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Avg Monthly"
+     },
+     "cagr": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Cagr"
+     },
+     "green": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Green"
+     },
+     "max_dd": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Max Dd"
+     },
+     "at_target_dd": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "At Target Dd"
+     },
+     "at_target_dd_multiple": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "At Target Dd Multiple"
+     },
+     "at_target_dd_5y": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "At Target Dd 5Y"
+     },
+     "sharpe": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Sharpe"
+     },
+     "k_ratio": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "K Ratio"
+     },
+     "trades": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Trades"
+     },
+     "beats_bh": {
+      "type": "boolean",
+      "title": "Beats Bh"
+     },
+     "vs_bh": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Vs Bh"
+     },
+     "bh_cash": {
+      "type": "boolean",
+      "title": "Bh Cash"
+     },
+     "bh_sharpe": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Bh Sharpe"
+     },
+     "bh_max_dd": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Bh Max Dd"
+     },
+     "bh_k_ratio": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Bh K Ratio"
+     },
+     "bh_at_target_dd": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Bh At Target Dd"
+     },
+     "bh_at_target_dd_multiple": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Bh At Target Dd Multiple"
+     },
+     "targets": {
+      "items": {
+       "type": "boolean"
+      },
+      "type": "array",
+      "title": "Targets"
+     },
+     "targets_met": {
+      "type": "integer",
+      "title": "Targets Met"
+     },
+     "robustness": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Robustness"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "loses": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Loses"
+     },
+     "stale": {
+      "type": "boolean",
+      "title": "Stale"
+     },
+     "instrument_id": {
+      "type": "string",
+      "title": "Instrument Id"
+     },
+     "bh_avg_monthly": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Bh Avg Monthly"
+     },
+     "params_now": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Params Now"
+     },
+     "held": {
+      "type": "boolean",
+      "title": "Held"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "key",
+     "id",
+     "strategy",
+     "list_id",
+     "timeframe",
+     "start",
+     "end",
+     "months",
+     "avg_monthly",
+     "cagr",
+     "green",
+     "max_dd",
+     "at_target_dd",
+     "at_target_dd_multiple",
+     "at_target_dd_5y",
+     "sharpe",
+     "k_ratio",
+     "trades",
+     "beats_bh",
+     "vs_bh",
+     "bh_cash",
+     "bh_sharpe",
+     "bh_max_dd",
+     "bh_k_ratio",
+     "bh_at_target_dd",
+     "bh_at_target_dd_multiple",
+     "targets",
+     "targets_met",
+     "robustness",
+     "loses",
+     "stale",
+     "instrument_id",
+     "bh_avg_monthly",
+     "params_now",
+     "held"
+    ],
+    "title": "AssetRow"
+   },
+   "AssetRows": {
+    "properties": {
+     "rows": {
+      "items": {
+       "$ref": "#/components/schemas/AssetRow"
+      },
+      "type": "array",
+      "title": "Rows"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "rows"
+    ],
+    "title": "AssetRows"
+   },
+   "BenchmarkFigures": {
+    "properties": {
+     "start": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Start"
+     },
+     "end": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "End"
+     },
+     "months": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Months"
+     },
+     "avg_monthly": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Avg Monthly"
+     },
+     "median_monthly": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Median Monthly"
+     },
+     "pct_green": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Pct Green"
+     },
+     "pct_red": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Pct Red"
+     },
+     "months_active": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Months Active"
+     },
+     "pct_months_active": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Pct Months Active"
+     },
+     "pct_green_active": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Pct Green Active"
+     },
+     "pct_red_active": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Pct Red Active"
+     },
+     "worst_month": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Worst Month"
+     },
+     "best_month": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Best Month"
+     },
+     "longest_red_streak": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Longest Red Streak"
+     },
+     "cagr": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Cagr"
+     },
+     "ann_vol": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Ann Vol"
+     },
+     "sharpe": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Sharpe"
+     },
+     "sortino": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Sortino"
+     },
+     "max_dd": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Max Dd"
+     },
+     "max_dd_days": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Max Dd Days"
+     },
+     "k_ratio": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "K Ratio"
+     },
+     "at_target_dd": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "At Target Dd"
+     },
+     "at_target_dd_multiple": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "At Target Dd Multiple"
+     },
+     "at_target_dd_5y": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "At Target Dd 5Y"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "start",
+     "end",
+     "months",
+     "avg_monthly",
+     "median_monthly",
+     "pct_green",
+     "pct_red",
+     "months_active",
+     "pct_months_active",
+     "pct_green_active",
+     "pct_red_active",
+     "worst_month",
+     "best_month",
+     "longest_red_streak",
+     "cagr",
+     "ann_vol",
+     "sharpe",
+     "sortino",
+     "max_dd",
+     "max_dd_days",
+     "k_ratio",
+     "at_target_dd",
+     "at_target_dd_multiple",
+     "at_target_dd_5y"
+    ],
+    "title": "BenchmarkFigures"
+   },
+   "BenchmarkView": {
+    "properties": {
+     "pts": {
+      "items": {
+       "prefixItems": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "number"
+        }
+       ],
+       "type": "array",
+       "maxItems": 2,
+       "minItems": 2
+      },
+      "type": "array",
+      "title": "Pts"
+     },
+     "months": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Months"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "growth": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Growth"
+     },
+     "figures": {
+      "$ref": "#/components/schemas/BenchmarkFigures"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "pts",
+     "months",
+     "growth",
+     "figures"
+    ],
+    "title": "BenchmarkView"
+   },
+   "Candidate": {
+    "properties": {
+     "key": {
+      "type": "string",
+      "title": "Key"
+     },
+     "strategy": {
+      "type": "string",
+      "title": "Strategy"
+     },
+     "sharpe": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Sharpe"
+     },
+     "windows": {
+      "type": "integer",
+      "title": "Windows"
+     },
+     "stale": {
+      "type": "boolean",
+      "title": "Stale"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "key",
+     "strategy",
+     "sharpe",
+     "windows",
+     "stale"
+    ],
+    "title": "Candidate"
+   },
+   "Cell": {
+    "properties": {
+     "key": {
+      "type": "string",
+      "title": "Key"
+     },
+     "list_id": {
+      "type": "string",
+      "title": "List Id"
+     },
+     "timeframe": {
+      "type": "string",
+      "enum": [
+       "1h",
+       "4h",
+       "1d"
+      ],
+      "title": "Timeframe"
+     },
+     "sharpe": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Sharpe"
+     },
+     "avg_monthly": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Avg Monthly"
+     },
+     "cagr": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Cagr"
+     },
+     "vs_bh": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Vs Bh"
+     },
+     "beats_bh": {
+      "type": "boolean",
+      "title": "Beats Bh"
+     },
+     "bh_cash": {
+      "type": "boolean",
+      "title": "Bh Cash"
+     },
+     "targets_met": {
+      "type": "integer",
+      "title": "Targets Met"
+     },
+     "stale": {
+      "type": "boolean",
+      "title": "Stale"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "key",
+     "list_id",
+     "timeframe",
+     "sharpe",
+     "avg_monthly",
+     "cagr",
+     "vs_bh",
+     "beats_bh",
+     "bh_cash",
+     "targets_met",
+     "stale"
+    ],
+    "title": "Cell"
+   },
+   "CheckInfo": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "title": "Id"
+     },
+     "label": {
+      "type": "string",
+      "title": "Label"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "id",
+     "label"
+    ],
+    "title": "CheckInfo"
+   },
+   "CurveLine": {
+    "properties": {
+     "pts": {
+      "items": {
+       "prefixItems": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "number"
+        }
+       ],
+       "type": "array",
+       "maxItems": 2,
+       "minItems": 2
+      },
+      "type": "array",
+      "title": "Pts"
+     },
+     "benchmark": {
+      "anyOf": [
+       {
+        "items": {
+         "prefixItems": [
+          {
+           "type": "integer"
+          },
+          {
+           "type": "number"
+          }
+         ],
+         "type": "array",
+         "maxItems": 2,
+         "minItems": 2
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Benchmark"
+     },
+     "index": {
+      "anyOf": [
+       {
+        "items": {
+         "prefixItems": [
+          {
+           "type": "integer"
+          },
+          {
+           "type": "number"
+          }
+         ],
+         "type": "array",
+         "maxItems": 2,
+         "minItems": 2
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Index"
+     },
+     "index_name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Index Name"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "pts",
+     "benchmark",
+     "index",
+     "index_name"
+    ],
+    "title": "CurveLine"
+   },
+   "CurveView": {
+    "properties": {
+     "pts": {
+      "items": {
+       "prefixItems": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "number"
+        }
+       ],
+       "type": "array",
+       "maxItems": 2,
+       "minItems": 2
+      },
+      "type": "array",
+      "title": "Pts"
+     },
+     "dd": {
+      "items": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "type": "array",
+      "title": "Dd"
+     },
+     "months": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Months"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "growth": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Growth"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "pts",
+     "dd",
+     "months",
+     "growth"
+    ],
+    "title": "CurveView"
+   },
+   "Curves": {
+    "properties": {
+     "curves": {
+      "additionalProperties": {
+       "$ref": "#/components/schemas/CurveLine"
+      },
+      "type": "object",
+      "title": "Curves"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "curves"
+    ],
+    "title": "Curves"
+   },
+   "Elsewhere": {
+    "properties": {
+     "lists": {
+      "items": {
+       "$ref": "#/components/schemas/Cell"
+      },
+      "type": "array",
+      "title": "Lists"
+     },
+     "alone": {
+      "items": {
+       "$ref": "#/components/schemas/Cell"
+      },
+      "type": "array",
+      "title": "Alone"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "lists",
+     "alone"
+    ],
+    "title": "Elsewhere"
+   },
+   "FailedJob": {
+    "properties": {
+     "stage": {
+      "type": "string",
+      "enum": [
+       "lists",
+       "single_assets"
+      ],
+      "title": "Stage"
+     },
+     "strategy": {
+      "type": "string",
+      "title": "Strategy"
+     },
+     "list_id": {
+      "type": "string",
+      "title": "List Id"
+     },
+     "timeframe": {
+      "type": "string",
+      "enum": [
+       "1h",
+       "4h",
+       "1d"
+      ],
+      "title": "Timeframe"
+     },
+     "attempts": {
+      "type": "integer",
+      "title": "Attempts"
+     },
+     "error": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Error"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "stage",
+     "strategy",
+     "list_id",
+     "timeframe",
+     "attempts",
+     "error"
+    ],
+    "title": "FailedJob"
+   },
+   "Figures": {
+    "properties": {
+     "start": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Start"
+     },
+     "end": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "End"
+     },
+     "months": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Months"
+     },
+     "avg_monthly": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Avg Monthly"
+     },
+     "median_monthly": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Median Monthly"
+     },
+     "pct_green": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Pct Green"
+     },
+     "pct_red": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Pct Red"
+     },
+     "months_active": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Months Active"
+     },
+     "pct_months_active": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Pct Months Active"
+     },
+     "pct_green_active": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Pct Green Active"
+     },
+     "pct_red_active": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Pct Red Active"
+     },
+     "worst_month": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Worst Month"
+     },
+     "best_month": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Best Month"
+     },
+     "longest_red_streak": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Longest Red Streak"
+     },
+     "cagr": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Cagr"
+     },
+     "ann_vol": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Ann Vol"
+     },
+     "sharpe": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Sharpe"
+     },
+     "sortino": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Sortino"
+     },
+     "max_dd": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Max Dd"
+     },
+     "max_dd_days": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Max Dd Days"
+     },
+     "k_ratio": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "K Ratio"
+     },
+     "at_target_dd": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "At Target Dd"
+     },
+     "at_target_dd_multiple": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "At Target Dd Multiple"
+     },
+     "at_target_dd_5y": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "At Target Dd 5Y"
+     },
+     "n_trades": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "N Trades"
+     },
+     "trades_per_month": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Trades Per Month"
+     },
+     "win_rate": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Win Rate"
+     },
+     "avg_trade": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Avg Trade"
+     },
+     "median_trade_bars": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Median Trade Bars"
+     },
+     "time_in_market": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Time In Market"
+     },
+     "avg_gross": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Avg Gross"
+     },
+     "avg_win": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Avg Win"
+     },
+     "avg_loss": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Avg Loss"
+     },
+     "profit_factor": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Profit Factor"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "start",
+     "end",
+     "months",
+     "avg_monthly",
+     "median_monthly",
+     "pct_green",
+     "pct_red",
+     "months_active",
+     "pct_months_active",
+     "pct_green_active",
+     "pct_red_active",
+     "worst_month",
+     "best_month",
+     "longest_red_streak",
+     "cagr",
+     "ann_vol",
+     "sharpe",
+     "sortino",
+     "max_dd",
+     "max_dd_days",
+     "k_ratio",
+     "at_target_dd",
+     "at_target_dd_multiple",
+     "at_target_dd_5y",
+     "n_trades",
+     "trades_per_month",
+     "win_rate",
+     "avg_trade",
+     "median_trade_bars",
+     "time_in_market",
+     "avg_gross",
+     "avg_win",
+     "avg_loss",
+     "profit_factor"
+    ],
+    "title": "Figures"
+   },
+   "HTTPValidationError": {
+    "properties": {
+     "detail": {
+      "items": {
+       "$ref": "#/components/schemas/ValidationError"
+      },
+      "type": "array",
+      "title": "Detail"
+     }
+    },
+    "type": "object",
+    "title": "HTTPValidationError"
+   },
+   "IndexView": {
+    "properties": {
+     "pts": {
+      "items": {
+       "prefixItems": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "number"
+        }
+       ],
+       "type": "array",
+       "maxItems": 2,
+       "minItems": 2
+      },
+      "type": "array",
+      "title": "Pts"
+     },
+     "months": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Months"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "growth": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Growth"
+     },
+     "figures": {
+      "$ref": "#/components/schemas/BenchmarkFigures"
+     },
+     "name": {
+      "type": "string",
+      "title": "Name"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "pts",
+     "months",
+     "growth",
+     "figures",
+     "name"
+    ],
+    "title": "IndexView"
+   },
+   "ListInfo": {
+    "properties": {
+     "id": {
+      "type": "string",
+      "title": "Id"
+     },
+     "market": {
+      "type": "string",
+      "title": "Market"
+     },
+     "label": {
+      "type": "string",
+      "title": "Label"
+     },
+     "title": {
+      "type": "string",
+      "title": "Title"
+     },
+     "research": {
+      "type": "boolean",
+      "title": "Research"
+     },
+     "per_instrument": {
+      "type": "boolean",
+      "title": "Per Instrument"
+     },
+     "venue": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Venue"
+     },
+     "costs": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Costs"
+     },
+     "size": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/ListSize"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "id",
+     "market",
+     "label",
+     "title",
+     "research",
+     "per_instrument",
+     "venue",
+     "costs",
+     "size"
+    ],
+    "title": "ListInfo"
+   },
+   "ListRow": {
+    "properties": {
+     "key": {
+      "type": "string",
+      "title": "Key"
+     },
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "strategy": {
+      "type": "string",
+      "title": "Strategy"
+     },
+     "list_id": {
+      "type": "string",
+      "title": "List Id"
+     },
+     "timeframe": {
+      "type": "string",
+      "enum": [
+       "1h",
+       "4h",
+       "1d"
+      ],
+      "title": "Timeframe"
+     },
+     "start": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Start"
+     },
+     "end": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "End"
+     },
+     "months": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Months"
+     },
+     "avg_monthly": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Avg Monthly"
+     },
+     "cagr": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Cagr"
+     },
+     "green": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Green"
+     },
+     "max_dd": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Max Dd"
+     },
+     "at_target_dd": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "At Target Dd"
+     },
+     "at_target_dd_multiple": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "At Target Dd Multiple"
+     },
+     "at_target_dd_5y": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "At Target Dd 5Y"
+     },
+     "sharpe": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Sharpe"
+     },
+     "k_ratio": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "K Ratio"
+     },
+     "trades": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Trades"
+     },
+     "beats_bh": {
+      "type": "boolean",
+      "title": "Beats Bh"
+     },
+     "vs_bh": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Vs Bh"
+     },
+     "bh_cash": {
+      "type": "boolean",
+      "title": "Bh Cash"
+     },
+     "bh_sharpe": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Bh Sharpe"
+     },
+     "bh_max_dd": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Bh Max Dd"
+     },
+     "bh_k_ratio": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Bh K Ratio"
+     },
+     "bh_at_target_dd": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Bh At Target Dd"
+     },
+     "bh_at_target_dd_multiple": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Bh At Target Dd Multiple"
+     },
+     "targets": {
+      "items": {
+       "type": "boolean"
+      },
+      "type": "array",
+      "title": "Targets"
+     },
+     "targets_met": {
+      "type": "integer",
+      "title": "Targets Met"
+     },
+     "robustness": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Robustness"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "loses": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Loses"
+     },
+     "stale": {
+      "type": "boolean",
+      "title": "Stale"
+     },
+     "worst_month": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Worst Month"
+     },
+     "evaluated_at": {
+      "type": "string",
+      "title": "Evaluated At"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "key",
+     "id",
+     "strategy",
+     "list_id",
+     "timeframe",
+     "start",
+     "end",
+     "months",
+     "avg_monthly",
+     "cagr",
+     "green",
+     "max_dd",
+     "at_target_dd",
+     "at_target_dd_multiple",
+     "at_target_dd_5y",
+     "sharpe",
+     "k_ratio",
+     "trades",
+     "beats_bh",
+     "vs_bh",
+     "bh_cash",
+     "bh_sharpe",
+     "bh_max_dd",
+     "bh_k_ratio",
+     "bh_at_target_dd",
+     "bh_at_target_dd_multiple",
+     "targets",
+     "targets_met",
+     "robustness",
+     "loses",
+     "stale",
+     "worst_month",
+     "evaluated_at"
+    ],
+    "title": "ListRow"
+   },
+   "ListRows": {
+    "properties": {
+     "rows": {
+      "items": {
+       "$ref": "#/components/schemas/ListRow"
+      },
+      "type": "array",
+      "title": "Rows"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "rows"
+    ],
+    "title": "ListRows"
+   },
+   "ListSize": {
+    "properties": {
+     "fixed": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Fixed"
+     },
+     "trading": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Trading"
+     },
+     "held": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Held"
+     },
+     "ever": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Ever"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "fixed",
+     "trading",
+     "held",
+     "ever"
+    ],
+    "title": "ListSize"
+   },
+   "Meta": {
+    "properties": {
+     "targets": {
+      "$ref": "#/components/schemas/Targets"
+     },
+     "capital": {
+      "type": "number",
+      "title": "Capital"
+     },
+     "min_trades": {
+      "type": "integer",
+      "title": "Min Trades"
+     },
+     "markets": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Markets"
+     },
+     "lists": {
+      "items": {
+       "$ref": "#/components/schemas/ListInfo"
+      },
+      "type": "array",
+      "title": "Lists"
+     },
+     "checks": {
+      "items": {
+       "$ref": "#/components/schemas/CheckInfo"
+      },
+      "type": "array",
+      "title": "Checks"
+     },
+     "assets": {
+      "items": {
+       "$ref": "#/components/schemas/AssetInfo"
+      },
+      "type": "array",
+      "title": "Assets"
+     },
+     "strategies": {
+      "$ref": "#/components/schemas/StrategyNames"
+     },
+     "tries": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/TriesInfo"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "updated_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Updated At"
+     },
+     "stale": {
+      "$ref": "#/components/schemas/StaleCounts"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "targets",
+     "capital",
+     "min_trades",
+     "markets",
+     "lists",
+     "checks",
+     "assets",
+     "strategies",
+     "tries",
+     "updated_at",
+     "stale"
+    ],
+    "title": "Meta"
+   },
+   "Months": {
+    "properties": {
+     "first": {
+      "type": "string",
+      "title": "First"
+     },
+     "v": {
+      "items": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "type": "array",
+      "title": "V"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "first",
+     "v"
+    ],
+    "title": "Months"
+   },
+   "NameView": {
+    "properties": {
+     "instrument_id": {
+      "type": "string",
+      "title": "Instrument Id"
+     },
+     "label": {
+      "type": "string",
+      "title": "Label"
+     },
+     "trades": {
+      "type": "integer",
+      "title": "Trades"
+     },
+     "won": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Won"
+     },
+     "compounded": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Compounded"
+     },
+     "alone": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/Alone"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "instrument_id",
+     "label",
+     "trades",
+     "won",
+     "compounded",
+     "alone"
+    ],
+    "title": "NameView"
+   },
+   "Refusal": {
+    "properties": {
+     "message": {
+      "type": "string",
+      "title": "Message"
+     },
+     "confirm": {
+      "type": "boolean",
+      "title": "Confirm"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "message",
+     "confirm"
+    ],
+    "title": "Refusal"
+   },
+   "ResultView": {
+    "properties": {
+     "key": {
+      "type": "string",
+      "title": "Key"
+     },
+     "kind": {
+      "type": "string",
+      "enum": [
+       "list",
+       "asset",
+       "pick"
+      ],
+      "title": "Kind"
+     },
+     "row": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/ListRow"
+       },
+       {
+        "$ref": "#/components/schemas/AssetRow"
+       }
+      ],
+      "title": "Row"
+     },
+     "description": {
+      "type": "string",
+      "title": "Description"
+     },
+     "notes": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Notes"
+     },
+     "fill": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Fill"
+     },
+     "evaluated_at": {
+      "type": "string",
+      "title": "Evaluated At"
+     },
+     "figures": {
+      "$ref": "#/components/schemas/Figures"
+     },
+     "curve": {
+      "$ref": "#/components/schemas/CurveView"
+     },
+     "benchmark": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/BenchmarkView"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "index": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/IndexView"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "windows": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/WindowsView"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "params": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Params"
+     },
+     "grid": {
+      "anyOf": [
+       {
+        "additionalProperties": {
+         "items": {},
+         "type": "array"
+        },
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Grid"
+     },
+     "params_now": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Params Now"
+     },
+     "names": {
+      "items": {
+       "$ref": "#/components/schemas/NameView"
+      },
+      "type": "array",
+      "title": "Names"
+     },
+     "elsewhere": {
+      "$ref": "#/components/schemas/Elsewhere"
+     },
+     "candidates": {
+      "items": {
+       "$ref": "#/components/schemas/Candidate"
+      },
+      "type": "array",
+      "title": "Candidates"
+     },
+     "beyond_luck": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Beyond Luck"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "key",
+     "kind",
+     "row",
+     "description",
+     "notes",
+     "fill",
+     "evaluated_at",
+     "figures",
+     "curve",
+     "benchmark",
+     "index",
+     "windows",
+     "params",
+     "grid",
+     "params_now",
+     "names",
+     "elsewhere",
+     "candidates",
+     "beyond_luck"
+    ],
+    "title": "ResultView"
+   },
+   "Robustness": {
+    "properties": {
+     "passed": {
+      "type": "integer",
+      "title": "Passed"
+     },
+     "applicable": {
+      "type": "integer",
+      "title": "Applicable"
+     },
+     "not_computed": {
+      "type": "integer",
+      "title": "Not Computed"
+     },
+     "checks": {
+      "items": {
+       "prefixItems": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "string"
+        },
+        {
+         "type": "string"
+        },
+        {
+         "type": "string",
+         "enum": [
+          "passed",
+          "failed",
+          "too_short",
+          "not_applicable",
+          "not_computed"
+         ]
+        }
+       ],
+       "type": "array",
+       "maxItems": 4,
+       "minItems": 4
+      },
+      "type": "array",
+      "title": "Checks"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "passed",
+     "applicable",
+     "not_computed",
+     "checks"
+    ],
+    "title": "Robustness"
+   },
+   "RunAccepted": {
+    "properties": {
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "id"
+    ],
+    "title": "RunAccepted"
+   },
+   "RunCurrent": {
+    "properties": {
+     "run": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/RunView"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "run"
+    ],
+    "title": "RunCurrent"
+   },
+   "RunOnly": {
+    "properties": {
+     "strategies": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Strategies"
+     },
+     "lists": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Lists"
+     },
+     "timeframes": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string",
+         "enum": [
+          "1h",
+          "4h",
+          "1d"
+         ]
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Timeframes"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "title": "RunOnly"
+   },
+   "RunResume": {
+    "properties": {
+     "confirm": {
+      "type": "boolean",
+      "title": "Confirm",
+      "default": false
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "title": "RunResume"
+   },
+   "RunStart": {
+    "properties": {
+     "single_assets": {
+      "type": "boolean",
+      "title": "Single Assets",
+      "default": false
+     },
+     "everything": {
+      "type": "boolean",
+      "title": "Everything",
+      "default": false
+     },
+     "only": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/RunOnly"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "confirm": {
+      "type": "boolean",
+      "title": "Confirm",
+      "default": false
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "title": "RunStart"
+   },
+   "RunView": {
+    "properties": {
+     "id": {
+      "type": "integer",
+      "title": "Id"
+     },
+     "state": {
+      "type": "string",
+      "enum": [
+       "starting",
+       "running",
+       "stopping",
+       "stopped",
+       "interrupted",
+       "done"
+      ],
+      "title": "State"
+     },
+     "stage": {
+      "anyOf": [
+       {
+        "type": "string",
+        "enum": [
+         "lists",
+         "single_assets",
+         "picks",
+         "summaries"
+        ]
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Stage"
+     },
+     "active": {
+      "type": "boolean",
+      "title": "Active"
+     },
+     "requested_by": {
+      "type": "string",
+      "enum": [
+       "ui",
+       "cli"
+      ],
+      "title": "Requested By"
+     },
+     "requested_at": {
+      "type": "string",
+      "title": "Requested At"
+     },
+     "started_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Started At"
+     },
+     "finished_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Finished At"
+     },
+     "single_assets": {
+      "type": "boolean",
+      "title": "Single Assets"
+     },
+     "everything": {
+      "type": "boolean",
+      "title": "Everything"
+     },
+     "narrowed_to": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Narrowed To"
+     },
+     "resumed": {
+      "type": "integer",
+      "title": "Resumed"
+     },
+     "code_changed": {
+      "type": "boolean",
+      "title": "Code Changed"
+     },
+     "stages": {
+      "items": {
+       "$ref": "#/components/schemas/StageProgress"
+      },
+      "type": "array",
+      "title": "Stages"
+     },
+     "running": {
+      "items": {
+       "$ref": "#/components/schemas/RunningJob"
+      },
+      "type": "array",
+      "title": "Running"
+     },
+     "failed": {
+      "items": {
+       "$ref": "#/components/schemas/FailedJob"
+      },
+      "type": "array",
+      "title": "Failed"
+     },
+     "eta_seconds": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Eta Seconds"
+     },
+     "cpu_seconds": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Cpu Seconds"
+     },
+     "error": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Error"
+     },
+     "log_path": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Log Path"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "id",
+     "state",
+     "stage",
+     "active",
+     "requested_by",
+     "requested_at",
+     "started_at",
+     "finished_at",
+     "single_assets",
+     "everything",
+     "narrowed_to",
+     "resumed",
+     "code_changed",
+     "stages",
+     "running",
+     "failed",
+     "eta_seconds",
+     "cpu_seconds",
+     "error",
+     "log_path"
+    ],
+    "title": "RunView"
+   },
+   "RunningJob": {
+    "properties": {
+     "stage": {
+      "type": "string",
+      "enum": [
+       "lists",
+       "single_assets"
+      ],
+      "title": "Stage"
+     },
+     "strategy": {
+      "type": "string",
+      "title": "Strategy"
+     },
+     "list_id": {
+      "type": "string",
+      "title": "List Id"
+     },
+     "timeframe": {
+      "type": "string",
+      "enum": [
+       "1h",
+       "4h",
+       "1d"
+      ],
+      "title": "Timeframe"
+     },
+     "started_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Started At"
+     },
+     "expected_seconds": {
+      "type": "number",
+      "title": "Expected Seconds"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "stage",
+     "strategy",
+     "list_id",
+     "timeframe",
+     "started_at",
+     "expected_seconds"
+    ],
+    "title": "RunningJob"
+   },
+   "StageProgress": {
+    "properties": {
+     "stage": {
+      "type": "string",
+      "enum": [
+       "lists",
+       "single_assets"
+      ],
+      "title": "Stage"
+     },
+     "total": {
+      "type": "integer",
+      "title": "Total"
+     },
+     "done": {
+      "type": "integer",
+      "title": "Done"
+     },
+     "failed": {
+      "type": "integer",
+      "title": "Failed"
+     },
+     "skipped": {
+      "type": "integer",
+      "title": "Skipped"
+     },
+     "stopped": {
+      "type": "integer",
+      "title": "Stopped"
+     },
+     "queued": {
+      "type": "integer",
+      "title": "Queued"
+     },
+     "running": {
+      "type": "integer",
+      "title": "Running"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "stage",
+     "total",
+     "done",
+     "failed",
+     "skipped",
+     "stopped",
+     "queued",
+     "running"
+    ],
+    "title": "StageProgress"
+   },
+   "StaleCounts": {
+    "properties": {
+     "lists": {
+      "type": "integer",
+      "title": "Lists"
+     },
+     "assets": {
+      "type": "integer",
+      "title": "Assets"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "lists",
+     "assets"
+    ],
+    "title": "StaleCounts"
+   },
+   "StrategyNames": {
+    "properties": {
+     "lists": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Lists"
+     },
+     "assets": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "title": "Assets"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "lists",
+     "assets"
+    ],
+    "title": "StrategyNames"
+   },
+   "Targets": {
+    "properties": {
+     "avg_monthly": {
+      "type": "number",
+      "title": "Avg Monthly"
+     },
+     "avg_monthly_stretch": {
+      "type": "number",
+      "title": "Avg Monthly Stretch"
+     },
+     "pct_green": {
+      "type": "number",
+      "title": "Pct Green"
+     },
+     "pct_green_stretch": {
+      "type": "number",
+      "title": "Pct Green Stretch"
+     },
+     "max_dd": {
+      "type": "number",
+      "title": "Max Dd"
+     },
+     "sharpe": {
+      "type": "number",
+      "title": "Sharpe"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "avg_monthly",
+     "avg_monthly_stretch",
+     "pct_green",
+     "pct_green_stretch",
+     "max_dd",
+     "sharpe"
+    ],
+    "title": "Targets"
+   },
+   "TriesInfo": {
+    "properties": {
+     "saved": {
+      "type": "integer",
+      "title": "Saved"
+     },
+     "independent": {
+      "type": "number",
+      "title": "Independent"
+     },
+     "best_95": {
+      "type": "number",
+      "title": "Best 95"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "saved",
+     "independent",
+     "best_95"
+    ],
+    "title": "TriesInfo"
+   },
+   "ValidationError": {
+    "properties": {
+     "loc": {
+      "items": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "integer"
+        }
+       ]
+      },
+      "type": "array",
+      "title": "Location"
+     },
+     "msg": {
+      "type": "string",
+      "title": "Message"
+     },
+     "type": {
+      "type": "string",
+      "title": "Error Type"
+     },
+     "input": {
+      "title": "Input"
+     },
+     "ctx": {
+      "type": "object",
+      "title": "Context"
+     }
+    },
+    "type": "object",
+    "required": [
+     "loc",
+     "msg",
+     "type"
+    ],
+    "title": "ValidationError"
+   },
+   "WindowsView": {
+    "properties": {
+     "sets": {
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "type": "array",
+      "title": "Sets"
+     },
+     "end": {
+      "type": "string",
+      "title": "End"
+     },
+     "train": {
+      "type": "integer",
+      "title": "Train"
+     },
+     "w": {
+      "items": {
+       "prefixItems": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "integer"
+        }
+       ],
+       "type": "array",
+       "maxItems": 2,
+       "minItems": 2
+      },
+      "type": "array",
+      "title": "W"
+     }
+    },
+    "additionalProperties": false,
+    "type": "object",
+    "required": [
+     "sets",
+     "end",
+     "train",
+     "w"
+    ],
+    "title": "WindowsView"
+   }
+  }
+ }
+}

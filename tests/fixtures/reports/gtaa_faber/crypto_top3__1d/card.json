@@ -1,0 +1,274 @@
+{
+ "strategy": "gtaa_faber",
+ "universe": "crypto_top3",
+ "timeframe": "1d",
+ "notes": [
+  "single configuration: nothing is fitted, the whole history is out-of-sample"
+ ],
+ "out_of_sample": {
+  "start": "2020-01-01",
+  "end": "2026-09-24",
+  "months": 80,
+  "avg_monthly": 0.021756776625388108,
+  "median_monthly": 0.0,
+  "pct_green": 0.425,
+  "pct_red": 0.35,
+  "months_active": 62,
+  "pct_months_active": 0.775,
+  "pct_green_active": 0.5483870967741935,
+  "pct_red_active": 0.45161290322580644,
+  "worst_month": -0.24390031546940694,
+  "best_month": 0.5765530936317202,
+  "longest_red_streak": 4,
+  "cagr": 0.294703497839198,
+  "ann_vol": 0.5355797210779601,
+  "sharpe": 0.7503959550031916,
+  "sortino": 0.8732724953950608,
+  "max_dd": -0.6219196918118168,
+  "max_dd_days": 955,
+  "n_trades": 76,
+  "trades_per_month": 0.95,
+  "win_rate": 0.27631578947368424,
+  "avg_trade": 0.16883844548903768,
+  "median_trade_bars": 10.5,
+  "time_in_market": 0.6752136752136753,
+  "avg_gross": 0.551023051023051,
+  "bh_avg_monthly": 0.029812321719749457,
+  "bh_pct_green": 0.575,
+  "bh_sharpe": 0.8576641232442421,
+  "bh_max_dd": -0.7890683284568325,
+  "bh_cagr": 0.42264652160025085,
+  "bh_cash": false,
+  "vs_bh": 0.015125777589447775,
+  "beats_bh": true,
+  "targets": {
+   "avg_monthly>=1.5%": true,
+   "green_months>=70%": false,
+   "max_dd>=-10%": false,
+   "sharpe>=1": false,
+   "beats_buy_and_hold": true
+  },
+  "targets_met": 2
+ },
+ "in_sample": {
+  "start": "2020-01-01",
+  "end": "2026-09-24",
+  "months": 80,
+  "avg_monthly": 0.021756776625388108,
+  "median_monthly": 0.0,
+  "pct_green": 0.425,
+  "pct_red": 0.35,
+  "months_active": 62,
+  "pct_months_active": 0.775,
+  "pct_green_active": 0.5483870967741935,
+  "pct_red_active": 0.45161290322580644,
+  "worst_month": -0.24390031546940694,
+  "best_month": 0.5765530936317202,
+  "longest_red_streak": 4,
+  "cagr": 0.294703497839198,
+  "ann_vol": 0.5355797210779601,
+  "sharpe": 0.7503959550031916,
+  "sortino": 0.8732724953950608,
+  "max_dd": -0.6219196918118168,
+  "max_dd_days": 955,
+  "n_trades": 76,
+  "trades_per_month": 0.95,
+  "win_rate": 0.27631578947368424,
+  "avg_trade": 0.16883844548903768,
+  "median_trade_bars": 10.5,
+  "time_in_market": 0.7067913786091907,
+  "avg_gross": 0.5767927341737833,
+  "bh_avg_monthly": 0.029812321719749457,
+  "bh_pct_green": 0.575,
+  "bh_sharpe": 0.8576641232442421,
+  "bh_max_dd": -0.7890683284568325,
+  "bh_cagr": 0.42264652160025085,
+  "bh_cash": false,
+  "vs_bh": 0.015125777589447775,
+  "beats_bh": true,
+  "targets": {
+   "avg_monthly>=1.5%": true,
+   "green_months>=70%": false,
+   "max_dd>=-10%": false,
+   "sharpe>=1": false,
+   "beats_buy_and_hold": true
+  },
+  "targets_met": 2
+ },
+ "in_sample_params": {
+  "sma_days": 210
+ },
+ "monte_carlo": {
+  "reps": 1000,
+  "block_days": 3.0,
+  "avg_monthly": {
+   "p5": -0.0056990795804243875,
+   "p50": 0.021963556146746943,
+   "p95": 0.049061714671805534
+  },
+  "pct_green_active": {
+   "p5": 0.4625,
+   "p50": 0.5625,
+   "p95": 0.65
+  },
+  "max_dd": {
+   "p5": -0.848724769407631,
+   "p50": -0.6237790183710825,
+   "p95": -0.4518772839085429
+  },
+  "sharpe": {
+   "p5": 0.14072927426606713,
+   "p50": 0.7597786827927284,
+   "p95": 1.3490590616605573
+  },
+  "worst_month": {
+   "p5": -0.44089587529460783,
+   "p50": -0.30449341435387994,
+   "p95": -0.21056068623375254
+  },
+  "prob_avg_monthly_below_target": 0.339,
+  "prob_max_dd_beyond_target": 1.0
+ },
+ "random_timing": {
+  "sharpe": 0.7538796348346273,
+  "null_median": 0.6401927024358616,
+  "null_p95": 1.6156384664291596,
+  "p": 0.3912175648702595,
+  "rotations": 500
+ },
+ "robustness": {
+  "luck": {
+   "mc_sharpe_p5": 0.14072927426606713
+  },
+  "timing": {
+   "p": 0.3912175648702595,
+   "null_median": 0.6401927024358616
+  },
+  "vs_hold": {
+   "t": -0.3765759200414944,
+   "sharpe": 0.7503959550031916,
+   "sharpe_other": 0.8576641232442421,
+   "reps": 1000,
+   "block_days": 20
+  },
+  "pbo": {
+   "na": "one configuration: nothing is chosen"
+  },
+  "eras": {
+   "rho": 0.6140357373459171,
+   "sharpes": [
+    1.0571834225057826,
+    1.275944591173712,
+    -0.12504477589262714
+   ],
+   "window_days": 730
+  },
+  "names": {
+   "instruments": 12,
+   "positive": 7,
+   "share": 0.5833333333333334
+  },
+  "costs": {
+   "multiple": 3.0,
+   "sharpe": 0.7268016666324432,
+   "cagr": 0.2784482822323866
+  },
+  "delay": {
+   "sharpe": 0.7037247992884552,
+   "cagr": 0.26294158178195115
+  },
+  "plateau": {
+   "config": {
+    "sma_days": 210
+   },
+   "sharpe": 0.7503959550031916,
+   "declared": true,
+   "neighbours": [
+    {
+     "params": {
+      "sma_days": 189
+     },
+     "sharpe": 0.6670212831906253,
+     "cagr": 0.23793065622554344
+    },
+    {
+     "params": {
+      "sma_days": 231
+     },
+     "sharpe": 0.6962316695499148,
+     "cagr": 0.2533803202939471
+    }
+   ]
+  },
+  "vs_rule": {
+   "na": "no model"
+  },
+  "seeds": {
+   "na": "no model"
+  },
+  "neighbour_lists": {
+   "lists": [
+    {
+     "universe": "crypto_top2",
+     "start": "2019-10-01",
+     "sharpe": 0.8915828161926064,
+     "cagr": 0.3460793949825567
+    },
+    {
+     "universe": "crypto_top4",
+     "start": "2020-01-01",
+     "sharpe": 0.4689569225756113,
+     "cagr": 0.11300856777203205
+    }
+   ]
+  },
+  "seconds": {
+   "luck": 0.0,
+   "timing": 0.0,
+   "vs_hold": 0.07,
+   "pbo": 0.0,
+   "eras": 0.0,
+   "names": 0.001,
+   "costs": 0.003,
+   "delay": 0.008,
+   "plateau": 0.059,
+   "vs_rule": 0.0,
+   "seeds": 0.0,
+   "neighbour_lists": 1.462
+  }
+ },
+ "code": {
+  "files": [
+   "strategy_lab/__init__.py",
+   "strategy_lab/config.py",
+   "strategy_lab/data/__init__.py",
+   "strategy_lab/data/bars.py",
+   "strategy_lab/data/calendars.py",
+   "strategy_lab/data/instruments.py",
+   "strategy_lab/data/integrity.py",
+   "strategy_lab/data/rates.py",
+   "strategy_lab/data/resample.py",
+   "strategy_lab/data/sharadar.py",
+   "strategy_lab/data/store.py",
+   "strategy_lab/engine/__init__.py",
+   "strategy_lab/engine/backtest.py",
+   "strategy_lab/engine/hold.py",
+   "strategy_lab/engine/trades.py",
+   "strategy_lab/evaluate.py",
+   "strategy_lab/indicators.py",
+   "strategy_lab/metrics.py",
+   "strategy_lab/ml.py",
+   "strategy_lab/montecarlo.py",
+   "strategy_lab/per_asset.py",
+   "strategy_lab/regimes.py",
+   "strategy_lab/robustness.py",
+   "strategy_lab/significance.py",
+   "strategy_lab/strategy.py",
+   "strategy_lab/trade_model.py",
+   "strategy_lab/universes.py",
+   "strategy_lab/walkforward.py",
+   "strategies/gtaa_faber.py"
+  ],
+  "sha": "cb22d1a678be89b1"
+ }
+}
