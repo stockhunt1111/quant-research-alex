@@ -246,8 +246,9 @@ Other data commands:
   happens to its share of the capital. The exit is the rule's trade's, measured from the trade's own entry, and the
   engine closes the position there at that price, a name seated in the middle of its rule's trade included.
 * `@rule(exposure=True)` — the rule's position is a holding kept while the name is listed, only resized, never an
-  entry or an exit (`vol_managed`, `market_regime`): on a list that changes its names are the list's members, a leaver
-  sold at the re-pick and a newcomer bought at once, instead of a leaver keeping its seat until its trade ends.
+  entry or an exit (`vol_managed`, `vol_managed_har`, `market_regime`): on a list that changes its names are the
+  list's members, a leaver sold at the re-pick and a newcomer bought at once, instead of a leaver keeping its seat
+  until its trade ends.
 * `@rule(market=True)` — the rule reads its market's index besides its bars (`strategy_lab.market`): SPY's daily
   closes for stocks and ETFs, bitcoin's on spot for coins, each as a bar knows it (the last daily close stamped at or
   before the bar's close: a bar of a session's hours sees the day before's close until its own day has closed). Its

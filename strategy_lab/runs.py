@@ -63,7 +63,8 @@ INDEXED_MARKETS = ("Stocks", "ETFs", "Crypto")
 INDEXED = [u for u in OURS if lists.market(u) in INDEXED_MARKETS]
 ON_EVERY_LIST = ["sma_cross", "ibs_reversion", "donchian_breakout", "ema_trend", "tsmom", "breakout_trail",
                  "calm_trend", "trend_or_revert", "late_entry_trend", "rsi2_connors", "gtaa_faber", "dual_momentum",
-                 "sector_rotation", "vol_managed", "bollinger_reversion", "keltner_breakout", "ibs", "pocket_pivot",
+                 "sector_rotation", "vol_managed", "vol_managed_har", "bollinger_reversion", "keltner_breakout", "ibs",
+                 "pocket_pivot",
                  # a model grading a rule's trades learns from every name of the list at once
                  "ibs_ml_filter", "ibs_ml_sized", "rsi2_ml_filter", "rsi2_ml_sized", "bollinger_ml_filter",
                  "bollinger_ml_sized", "trend_or_revert_ml_filter", "trend_or_revert_ml_sized"]
@@ -84,7 +85,7 @@ ALONE_RULES = ["sma_cross", "ibs_reversion", "donchian_breakout", "ema_trend", "
                "trend_or_revert", "late_entry_trend", "ml_direction", "rsi2_connors", "gtaa_faber", "vol_managed",
                "bollinger_reversion", "keltner_breakout", "ibs", "ibs_ml_filter", "ibs_ml_sized", "rsi2_ml_filter",
                "rsi2_ml_sized", "bollinger_ml_filter", "bollinger_ml_sized", "trend_or_revert_ml_filter",
-               "trend_or_revert_ml_sized", "market_regime", "regime_ema_trail", "pocket_pivot"]
+               "trend_or_revert_ml_sized", "market_regime", "regime_ema_trail", "pocket_pivot", "vol_managed_har"]
 ENGINE = "ml_feature_search"    # the firm's per-symbol engine, measured: on the ML task's lists only
 
 

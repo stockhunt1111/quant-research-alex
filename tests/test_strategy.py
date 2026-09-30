@@ -435,3 +435,16 @@ def test_a_member_that_stops_trading_in_its_trade_gives_its_seat_to_the_newcomer
     w = rule()(always).target(p, {}, member)
     assert np.allclose(w.iloc[:20, :2].to_numpy(), 0.5) and (w.iloc[20:, 1] == 0).all()
     assert np.allclose(w.iloc[20:, [0, 2]].to_numpy(), 0.5)    # the newcomer seated at once, not after a trade that never ends
+
+
+def test_har_forecasts_the_variance_a_series_of_steady_swings_has_and_follows_a_change_of_it():
+    from strategies.vol_managed_har import har_variance
+    rng = np.random.default_rng(7)
+    days = pd.date_range("2010-01-01", periods=3000, freq="D", tz="UTC")
+    sigma = np.where(np.arange(3000) < 2000, 0.01, 0.03)                 # the swings treble from day 2000
+    r = pd.Series(rng.normal(0.0, sigma), index=days)
+    f = har_variance(r, 21)
+    calm = f.iloc[1500:1990].median()
+    assert f.iloc[:150].isna().all() and 0.8e-4 < calm < 1.2e-4          # the steady variance, 1e-4
+    assert f.iloc[2300:].median() > 5 * calm                             # moved to the new level (9e-4)
+    assert f.iloc[2000:2050].median() < f.iloc[2300:].median()           # ... as the new days came in
