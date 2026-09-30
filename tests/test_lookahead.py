@@ -16,12 +16,12 @@ MODULES = [importlib.import_module(f"strategies.{m.name}") for m in pkgutil.iter
 ALL = lookahead.discover(MODULES)
 
 
-def _wide(monkeypatch, n: int = 1600) -> Panel:
-    """Twelve names over `n` bars whose volume varies and whose perps' funding is recorded: what a cross-sectional
+def _wide(monkeypatch) -> Panel:
+    """Twelve names over 1600 bars whose volume varies and whose perps' funding is recorded: what a cross-sectional
     book (six names or more), a model (500 bars before its first fit, a hundred trades before a grade), an event rule
     (a move on a volume spike) and a carry book need to hold a position before the cuts."""
     import strategies.funding_carry as carry
-    p = make_panel(ids=tuple(f"td:S{k:02d}" for k in range(12)), n=n, seed=11)
+    p = make_panel(ids=tuple(f"td:S{k:02d}" for k in range(12)), n=1600, seed=11)
     noise = np.exp(np.random.default_rng(12).normal(0.0, 0.7, p.volume.shape))
     p.volume, p.dollar_volume = p.volume * noise, p.dollar_volume * noise
     settle = pd.date_range(p.index[0] - pd.Timedelta(days=40), p.index[-1], freq="8h")
@@ -40,10 +40,6 @@ def test_every_strategy_passes_the_truncation_test(strategy, monkeypatch):
         configs = strategy.configs()
         some = [configs[k] for k in sorted({0, len(configs) // 2, len(configs) - 1})]
         compared = lookahead.check_all_configs(strategy, _wide(monkeypatch), some)
-    if not compared:
-        # a rule that trades seldom, graded by a model that waits for a hundred of its trades (a deviation from a
-        # 500-bar average: about 100 trades of twelve names by bar 1,750): its first configuration on twice the bars
-        compared = lookahead.check_all_configs(strategy, _wide(monkeypatch, n=3200), strategy.configs()[:1])
     assert compared > 0, f"{strategy.name} holds no position before the cuts: its truncation test proves nothing"
 
 

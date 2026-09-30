@@ -64,11 +64,9 @@ INDEXED = [u for u in OURS if lists.market(u) in INDEXED_MARKETS]
 ON_EVERY_LIST = ["sma_cross", "ibs_reversion", "donchian_breakout", "ema_trend", "tsmom", "breakout_trail",
                  "calm_trend", "trend_or_revert", "late_entry_trend", "rsi2_connors", "gtaa_faber", "dual_momentum",
                  "sector_rotation", "vol_managed", "bollinger_reversion", "keltner_breakout", "ibs", "pocket_pivot",
-                 "long_ma_deviation",
                  # a model grading a rule's trades learns from every name of the list at once
                  "ibs_ml_filter", "ibs_ml_sized", "rsi2_ml_filter", "rsi2_ml_sized", "bollinger_ml_filter",
-                 "bollinger_ml_sized", "trend_or_revert_ml_filter", "trend_or_revert_ml_sized",
-                 "long_ma_deviation_ml_filter", "long_ma_deviation_ml_sized"]
+                 "bollinger_ml_sized", "trend_or_revert_ml_filter", "trend_or_revert_ml_sized"]
 LIST_RUNS = [
     # (strategy, lists); a strategy is strategies/<name>.py, on every timeframe
     *[(name, OURS) for name in ON_EVERY_LIST],
@@ -86,8 +84,7 @@ ALONE_RULES = ["sma_cross", "ibs_reversion", "donchian_breakout", "ema_trend", "
                "trend_or_revert", "late_entry_trend", "ml_direction", "rsi2_connors", "gtaa_faber", "vol_managed",
                "bollinger_reversion", "keltner_breakout", "ibs", "ibs_ml_filter", "ibs_ml_sized", "rsi2_ml_filter",
                "rsi2_ml_sized", "bollinger_ml_filter", "bollinger_ml_sized", "trend_or_revert_ml_filter",
-               "trend_or_revert_ml_sized", "market_regime", "regime_ema_trail", "pocket_pivot", "long_ma_deviation",
-               "long_ma_deviation_ml_filter", "long_ma_deviation_ml_sized"]
+               "trend_or_revert_ml_sized", "market_regime", "regime_ema_trail", "pocket_pivot"]
 ENGINE = "ml_feature_search"    # the firm's per-symbol engine, measured: on the ML task's lists only
 
 

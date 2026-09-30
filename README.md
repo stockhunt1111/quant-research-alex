@@ -202,13 +202,12 @@ Other data commands:
   long side minus the short one), and the walk-forward chooses on each list's past: `sma_cross` and `breakout_trail`
   short below their average or channel, `tsmom` short on a negative trailing return as its source, `ibs_reversion`
   short on strength, `market_regime` the whole list while its market's index is below its average, `regime_ema_trail`
-  a name that breaks down while it is, `pocket_pivot` a down close on more volume than every up day before it,
-  `long_ma_deviation` a close as far above its long average as it buys one below, the direction models short while the
-  probability of a rise is below 1 - their threshold (`ml_direction`, and `ml_feature_search`, whose search tries long
-  only and long/short, trading the model's "not up" as a short). A rule's short side is its long side on the prices
-  turned upside down (tested; a rule reading its market, on the market's index turned too; `long_ma_deviation`'s gap
-  is a share of the average, the same above as below, which that turn does not keep). The rules added on 2026-09-30
-  have the switch (user: a rule that can trade short is searched long only and long/short). Nine rules had the switch from 2026-09-27 and trade long only since 2026-09-28 (user: remove it where it
+  a name that breaks down while it is, `pocket_pivot` a down close on more volume than every up day before it, the
+  direction models short while the probability of a rise is below 1 - their threshold (`ml_direction`, and
+  `ml_feature_search`, whose search tries long only and long/short, trading the model's "not up" as a short). A rule's
+  short side is its long side on the prices turned upside down (tested; a rule reading its market, on the market's
+  index turned too). The rules added on 2026-09-30 have the switch (user: a rule that can trade short is searched long
+  only and long/short). Nine rules had the switch from 2026-09-27 and trade long only since 2026-09-28 (user: remove it where it
   does worse): `ema_trend`, `calm_trend`, `late_entry_trend`, `donchian_breakout`, `keltner_breakout`,
   `big_move_follow`, `rsi2_connors` (Connors sells RSI(2) above 95 under the 200-day average), `bollinger_reversion`
   and `trend_or_revert`. Measured walk-forward on the 15 lists x timeframes of one list per market (FX majors, CME
@@ -264,12 +263,11 @@ Other data commands:
   `ibs_ml_filter`, `ibs_ml_sized`, `rsi2_ml_filter`, `rsi2_ml_sized`, `bollinger_ml_filter`, `bollinger_ml_sized`,
   `trend_or_revert_ml_filter`, `trend_or_revert_ml_sized` are IBS, RSI(2), the Bollinger reversion and the regime
   switch graded so, each its rule written again (long only, as the four rules are): rules that trade often and win
-  more trades than they lose. `long_ma_deviation_ml_filter` and `long_ma_deviation_ml_sized` grade the long-average
-  deviation (86% of its trades won on the spot commodities 1d, 2026-09-30), long only as well though the rule has a
-  short side: the model's features describe the market at a trade's first bar, not the trade's side, and a long and a
-  short on the same bars would teach it opposite outcomes. A trend rule wins a third of its trades and earns on its few
-  large ones: a model that takes a trade only above one half would leave most of them out (`regime_ema_trail` and
-  `pocket_pivot` won 35% on crypto Top-10 1d).
+  more trades than they lose. A trend rule wins a third of its trades and earns on its few large ones: a model that
+  takes a trade only above one half would leave most of them out. Measured 2026-09-30 on `regime_ema_trail`'s long
+  side, which won 35% of its trades on crypto Top-10 1d: graded by `take` and by `size` it made -0.19% and -0.12% a
+  month there where the rule made +1.98% (133 and 143 of its 550 trades kept), and +0.09% and +0.05% on stocks Top-10
+  1d against +0.74%.
 * A bar an instrument missed (vendor gap, halt) is not a decision point for it: a rule keeps its last position,
   a panel strategy sees the instrument's last close.
 * Indicators: `strategy_lab.indicators` wraps TA-Lib (150+ functions: `ind.call("CCI", h, l, c, timeperiod=20)`).

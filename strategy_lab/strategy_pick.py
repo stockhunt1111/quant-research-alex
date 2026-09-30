@@ -41,8 +41,7 @@ CANDIDATES = ("sma_cross", "ibs_reversion", "donchian_breakout", "ema_trend", "t
               "trend_or_revert", "late_entry_trend", "ml_direction", "rsi2_connors", "gtaa_faber", "vol_managed",
               "bollinger_reversion", "keltner_breakout", "ibs", "ibs_ml_filter", "ibs_ml_sized", "rsi2_ml_filter",
               "rsi2_ml_sized", "bollinger_ml_filter", "bollinger_ml_sized", "trend_or_revert_ml_filter",
-              "trend_or_revert_ml_sized", "market_regime", "regime_ema_trail", "pocket_pivot", "long_ma_deviation",
-              "long_ma_deviation_ml_filter", "long_ma_deviation_ml_sized", "ml_feature_search")
+              "trend_or_revert_ml_sized", "market_regime", "regime_ema_trail", "pocket_pivot", "ml_feature_search")
 DESCRIPTION = ("Every 91 days, the strategy with the best Sharpe so far on this instrument alone, among every strategy "
                "run on it, held until the next choice: the best-strategy-for-an-asset engine, walk-forward.")
 

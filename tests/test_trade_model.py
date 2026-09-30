@@ -113,8 +113,7 @@ def test_the_graded_rule_passes_through_the_rule_framework_with_the_threshold_ke
     ("ibs_ml_filter", "ibs"), ("ibs_ml_sized", "ibs"), ("rsi2_ml_filter", "rsi2_connors"),
     ("rsi2_ml_sized", "rsi2_connors"), ("bollinger_ml_filter", "bollinger_reversion"),
     ("bollinger_ml_sized", "bollinger_reversion"), ("trend_or_revert_ml_filter", "trend_or_revert"),
-    ("trend_or_revert_ml_sized", "trend_or_revert"), ("long_ma_deviation_ml_filter", "long_ma_deviation"),
-    ("long_ma_deviation_ml_sized", "long_ma_deviation")])
+    ("trend_or_revert_ml_sized", "trend_or_revert")])
 def test_a_graded_rule_grades_the_long_trades_of_the_rule_it_copies(graded, plain):
     """A graded rule is its rule written again, long only: each of its signal configurations gives the rule's long
     side bit for bit, so a change of the rule that misses its graded copies fails here."""
