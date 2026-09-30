@@ -80,9 +80,14 @@ def own_day_closes(bars: pd.DataFrame) -> pd.Series:
     return c[~day.duplicated(keep="last")]
 
 
+def above_average(closes: pd.Series, n_days: int) -> pd.Series:
+    """How far a daily series' close is above its own `n_days`-day simple moving average, as a share of it (negative
+    below), day by day; NaN before the average has its days (a day is a row of the series: a session of SPY, a day of
+    bitcoin)."""
+    return closes / closes.rolling(n_days, min_periods=n_days).mean() - 1.0
+
+
 def trend(closes: pd.Series, n_days: int) -> pd.Series:
     """The side of a daily series' close against its own `n_days`-day simple moving average, day by day: 1 above, -1
-    below, 0 on it and before the average has its days (a day is a row of the series: a session of SPY, a day of
-    bitcoin)."""
-    avg = closes.rolling(n_days, min_periods=n_days).mean()
-    return np.sign(closes - avg).fillna(0.0)
+    below, 0 on it and before the average has its days."""
+    return np.sign(above_average(closes, n_days)).fillna(0.0)

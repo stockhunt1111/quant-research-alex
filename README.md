@@ -253,9 +253,9 @@ Other data commands:
   before the bar's close: a bar of a session's hours sees the day before's close until its own day has closed). Its
   positions are kept on disk under the index's bars as well as its own. Commodities and currency pairs have no such
   index (gold is one metal, not the commodities' market; a pair is one currency priced in another) and such a rule
-  refuses them: `market_regime` (a list held while its market's index is above its average) and `regime_ema_trail`
-  (a trend trade on each name under the same filter) run on the stock, ETF and crypto lists and their instruments
-  alone (`runs.INDEXED_MARKETS`).
+  refuses them: `market_regime` (a list held while its market's index is above its average, whole or, by the grid's
+  `grade`, in proportion to how far above) and `regime_ema_trail` (a trend trade on each name under the same filter)
+  run on the stock, ETF and crypto lists and their instruments alone (`runs.INDEXED_MARKETS`).
 * `@rule(grade=...)` — a model grades the rule's own trades before the universe's seats are given out
   (`strategy_lab.trade_model`): `take` keeps the trades it gives a probability above the grid key `threshold` of
   making money after costs, `size` scales each by 2p - 1. One model learns from every instrument of the run at once

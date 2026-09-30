@@ -25,7 +25,7 @@ def _index(monkeypatch, closes: pd.Series, tag: str) -> None:
 def test_a_bar_sees_the_markets_close_of_a_day_only_once_that_day_has_closed():
     s = load("market_regime")
     p = _hourly()
-    w = s.target(p, {"n_days": 50, "decay": False, "vol_parity": False, "long_only": True})["td:AAA"]
+    w = s.target(p, {"n_days": 50, "grade": 0.0, "decay": False, "vol_parity": False, "long_only": True})["td:AAA"]
     moved = w.ne(w.shift()).to_numpy() & (np.arange(len(w)) > 0)
     first_of_day = ~pd.Series(w.index.normalize()).duplicated().to_numpy()
     # every change is on a day's first bar: the index's close of the day before, stamped 21:00, decides the whole day
@@ -49,7 +49,7 @@ def test_positions_do_not_change_when_the_markets_future_is_cut_off(name, monkey
 
 
 @pytest.mark.parametrize("name, params", [
-    ("market_regime", {"n_days": 50, "decay": True, "vol_parity": False}),
+    ("market_regime", {"n_days": 50, "grade": 0.0, "decay": True, "vol_parity": False}),
     ("regime_ema_trail", {"n_days": 50, "ema_days": 10, "high_days": 20})])
 def test_the_short_side_is_the_long_side_on_the_name_and_the_market_turned_upside_down(name, params, monkeypatch):
     s = load(name)
@@ -68,7 +68,7 @@ def test_decay_holds_a_trend_whole_for_ninety_days_then_less_each_day_down_to_th
     days = pd.date_range("2020-01-01 21:00", periods=600, freq="D", tz="UTC")
     _index(monkeypatch, pd.Series(100 * np.exp(0.001 * np.arange(600)), index=days), "rising")
     bars = make_panel(ids=("td:AAA",), n=600, start="2020-01-01 21:00").one("td:AAA")
-    w = load("market_regime").fn(bars, n_days=50, decay=True, vol_parity=False, long_only=True)
+    w = load("market_regime").fn(bars, n_days=50, grade=0.0, decay=True, vol_parity=False, long_only=True)
     trend = w[w > 0]
     assert w.index[w > 0][0] == days[49]                   # on from the day the 50-day average has its 50 days
     assert (trend.iloc[:90] == 1.0).all()
@@ -76,11 +76,27 @@ def test_decay_holds_a_trend_whole_for_ninety_days_then_less_each_day_down_to_th
     assert np.allclose(trend.iloc[269:], 0.3) and (trend >= 0.3 - 1e-12).all()
 
 
+def test_a_graded_position_follows_the_indexs_distance_above_its_average_and_is_whole_from_the_grade_on(monkeypatch):
+    days = pd.date_range("2020-01-01 21:00", periods=500, freq="D", tz="UTC")
+    rise = np.r_[np.full(100, 0.0), np.linspace(0.0, 0.004, 200), np.full(200, -0.001)]  # speeding up, then a fall
+    index = pd.Series(100 * np.exp(np.cumsum(rise)), index=days)
+    _index(monkeypatch, index, "graded")
+    bars = make_panel(ids=("td:AAA",), n=500, start="2020-01-01 21:00").one("td:AAA")
+    s = load("market_regime")
+    whole = s.fn(bars, n_days=50, grade=0.0, decay=False, vol_parity=False, long_only=True)
+    graded = s.fn(bars, n_days=50, grade=0.05, decay=False, vol_parity=False, long_only=True)
+    distance = (index / index.rolling(50).mean() - 1).reindex(bars.index)
+    on = whole > 0
+    assert ((graded > 0) == on).all() and (graded <= whole).all()
+    assert np.allclose(graded[on], (distance[on] / 0.05).clip(upper=1.0))
+    assert ((graded[on] > 0) & (graded[on] < 1)).any() and (graded[on] == 1.0).any()
+
+
 def test_vol_parity_holds_a_name_at_most_whole_and_less_when_it_swings_more_than_its_market():
     s = load("market_regime")
     bars = make_panel(ids=("td:AAA",), n=900, seed=6).one("td:AAA")
-    plain = s.fn(bars, n_days=50, decay=False, vol_parity=False, long_only=True)
-    sized = s.fn(bars, n_days=50, decay=False, vol_parity=True, long_only=True)
+    plain = s.fn(bars, n_days=50, grade=0.0, decay=False, vol_parity=False, long_only=True)
+    sized = s.fn(bars, n_days=50, grade=0.0, decay=False, vol_parity=True, long_only=True)
     on = (plain > 0) & (sized > 0)
     assert ((sized >= 0) & (sized <= plain)).all()
     # the synthetic name's daily swings (1%) and the index's (1%) are alike: days either way
