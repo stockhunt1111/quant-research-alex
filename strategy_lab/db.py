@@ -37,12 +37,13 @@ from numba import njit
 
 from strategy_lab import log, metrics
 from strategy_lab.config import FIRM_TARGETS, ROOT_DIR
+from strategy_lab.engine.trades import made as ledger_made
 
 LOG = log.get("db")
 # STRATEGY_LAB_DB points a process at another file: a test's, or the server's `--db` passed on to the runs it starts
 DB_PATH = Path(os.environ.get("STRATEGY_LAB_DB") or ROOT_DIR / "db" / "app.sqlite")
 SCHEMA = Path(__file__).with_name("db_schema.sql")
-SCHEMA_VERSION = 6                 # a file's PRAGMA user_version: a change of SCHEMA raises it
+SCHEMA_VERSION = 7                 # a file's PRAGMA user_version: a change of SCHEMA raises it
 BUSY_MS = 60_000                   # how long a writer waits for another's transaction before it gives up
 JOURNAL_LIMIT = 64 * 1024 * 1024   # the WAL file is cut back to this after a checkpoint
 CHANGE_DAYS = 1                    # the change log the server reads keeps a day: a page that was away reloads everything
@@ -68,7 +69,7 @@ BH = ("avg_monthly", "pct_green", "sharpe", "max_dd", "cagr")
 MC_FIGURES = ("avg_monthly", "pct_green_active", "max_dd", "sharpe", "worst_month")
 CHECKS = ("luck", "vs_hold", "timing", "pbo", "plateau", "eras", "delay", "costs", "names", "neighbour_lists", "seeds",
           "vs_rule")
-TRADE_COLUMNS = ("instrument", "side", "entry_time", "exit_time", "entry_px", "exit_px", "bars", "gross_return",
+TRADE_COLUMNS = ("instrument", "side", "entry_time", "exit_time", "entry_px", "exit_px", "bars", "size", "gross_return",
                  "net_return", "exit_reason")
 
 
@@ -236,6 +237,10 @@ def series_sha(first_day: str, s: pd.Series) -> str:
 
 
 def encode_trades(trades: pd.DataFrame) -> bytes:
+    """A ledger's trades as parquet; a ledger kept before trades had their `size` (the imported files) keeps it
+    empty."""
+    if "size" not in trades.columns:
+        trades = trades.assign(size=np.nan)
     missing = [c for c in TRADE_COLUMNS if c not in trades.columns]
     if missing:
         raise ValueError(f"trades without {missing}")
@@ -364,13 +369,17 @@ def _scaled(values, borrowing, multiple, borrowed):
 
 # ---------------------------------------------------------------------------------------------------- what trades say
 def deals(trades: pd.DataFrame | None) -> dict:
-    """The trades' average win, average loss and profit factor, after costs (None without them)."""
+    """The trades' average win and average loss (each trade's net return, after costs and carry), and their profit
+    factor in money: what the winners made over what the losers lost, each weighed by the share it was entered with
+    (`engine.trades.made`): counted whole, a trade a model sized to a tenth weighed as much as a full one (None without
+    trades)."""
     if trades is None or trades.empty:
         return {"avg_win": None, "avg_loss": None, "profit_factor": None}
-    r = trades["net_return"]
+    r, money = trades["net_return"], ledger_made(trades)
     win, loss = r[r > 0], r[r < 0]
+    lost = -money[money < 0].sum()
     return {"avg_win": number(win.mean()) if len(win) else None, "avg_loss": number(loss.mean()) if len(loss) else None,
-            "profit_factor": number(win.sum() / -loss.sum()) if len(loss) else None}
+            "profit_factor": number(money[money > 0].sum() / lost) if lost > 0 else None}
 
 
 def by_name(trades: pd.DataFrame | None) -> list[tuple[str, int, float, float | None]]:
@@ -780,19 +789,23 @@ def latest_tries(conn: sqlite3.Connection, family: str = "lists") -> sqlite3.Row
 
 
 def save_tries(conn: sqlite3.Connection, family: str, covers: str, saved: int, independent: float, best_95: float,
-               code_sha: str, instruments: dict[str, tuple[int, float, float]] | None = None) -> int | None:
+               code_sha: str, instruments: dict[str, tuple[int, float, float, float | None]] | None = None,
+               best_95_excess: float | None = None) -> int | None:
     """Keep a family's tries worked out on `covers`, unless the results changed while they were worked out (then a
     newer count is due and this one would be wrong the moment it landed); `instruments`: each instrument's own
-    (saved, independent, best_95), the single assets'."""
+    (saved, independent, best_95, best_95_excess), the single assets'; `best_95_excess`: the bar of the t against
+    holding (board.luck_of on the records' excess over their buy & hold; None for a family not judged against it)."""
     with write(conn):
         if results_fingerprint(conn, family) != covers:
             LOG.info("%s changed while its tries were worked out: not kept, a newer count is due", family)
             return None
-        tid = conn.execute("INSERT INTO tries (family, computed_at, covers, saved, independent, best_95, code_sha) "
-                           "VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id",
-                           (family, now(), covers, saved, independent, best_95, code_sha)).fetchone()[0]
-        conn.executemany("INSERT INTO instrument_tries (tries_id, instrument_id, saved, independent, best_95) "
-                         "VALUES (?, ?, ?, ?, ?)", [(tid, i, *v) for i, v in (instruments or {}).items()])
+        tid = conn.execute("INSERT INTO tries (family, computed_at, covers, saved, independent, best_95, code_sha, "
+                           "best_95_excess) VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
+                           (family, now(), covers, saved, independent, best_95, code_sha,
+                            number(best_95_excess))).fetchone()[0]
+        conn.executemany("INSERT INTO instrument_tries (tries_id, instrument_id, saved, independent, best_95, "
+                         "best_95_excess) VALUES (?, ?, ?, ?, ?, ?)",
+                         [(tid, i, v[0], v[1], v[2], number(v[3])) for i, v in (instruments or {}).items()])
         return tid
 
 

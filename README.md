@@ -267,7 +267,7 @@ Other data commands:
 Run from the command line: `python -m strategy_lab run ema_trend tsmom -u etf_core crypto_top10 -t 1d 4h`.
 Universes: `etf_core`, `etf_topN` (the N most liquid of etf_core each month), `fx_majors`, `fx_all`, `us_stocks_topN`
 (S&P 500 members, top N by liquidity each month),
-`crypto_topN` (USD-M perps, top N by liquidity each month; not stablecoins, tokens of gold or TradFi contracts), `us_stocks_mcapN` (today's N largest S&P 500 members by
+`crypto_topN` (USD-M perps, top N by liquidity each month; not stablecoins, tokens of gold, index perps or TradFi contracts), `us_stocks_mcapN` (today's N largest S&P 500 members by
 market capitalisation, one share class per company), `crypto_mcapN` (today's N largest coins by market capitalisation
 with a Binance USD-M perp, stablecoins skipped: traded on perps as every crypto list, bought and held on spot),
 `coiniq` (CoinIQ's coins, priced with the Binance perp of the same
@@ -284,9 +284,13 @@ Top-100 by liquidity (crypto's Top-3: BTC and ETH, which have not left it since 
 ETFs' Top-3 of the 34 by the same rule, re-picked monthly with a buffer on the daily bars whatever the timeframe, so a
 list holds the same names on 1h and 4h as on 1d (a session's intraday bars miss its auctions, a share of its volume
 that differs by name) (`us_stocks_top3/10/50/100`, `crypto_top3/10/50/100`, `etf_top3`: a member keeps its seat
-until it ranks below 1.5 x N or stops trading, so a name at the edge no longer flips in and out every month; a seat
-goes only to a name that traded in the window, and a delisted market gives up its seat the day after its last bar to
-the best-ranked name outside; a re-pick decided at the end of a day is in force from the next day's first instant, on
+until it ranks below 1.5 x N or stops trading, so a name at the edge no longer flips in and out every month, and a
+name ranked inside N / 1.5 takes a seat at once from the member ranked lowest (until 2026-09-29 a newcomer waited for
+a free seat whatever its rank: a name ranked sixth stayed out of a Top-100 for months, and the narrower lists held
+names the wider did not, up to 1,061 bars of crypto Top-50; the crypto Top-100 now takes 8 newcomers a month at the
+median where it took 4); a seat goes only to a name that traded in the window, and a delisted market, or a stock
+leaving the S&P 500, gives up its seat the day after its last bar there to the best-ranked name outside (a leaver of the
+index had left its seat empty to the month's end: stocks Top-100 held 97-99 names on 2.3% of its days); a re-pick decided at the end of a day is in force from the next day's first instant, on
 every bar that closes then or later: a coin's bar of a month's last hour or day, which closes at the next month's
 first instant, is a monthly strategy's decision at the turn, and until 2026-09-29 it saw the month before's list, its
 newcomers bought a month late); ETFs also as the 10 majors
@@ -463,6 +467,12 @@ and without it, and writes reports/peer_check.md.
   the target figures.
 * **Makes money** means a positive Sharpe AND a positive compounded return: a positive Sharpe can still lose money
   once large swings compound, and such a result is rejected with that reason.
+* **Trades** (`engine.trades`) — a trade's net return is its price move less its two fills' costs and what holding it
+  paid and was paid (a perp's funding, a short's borrow, the dividends of the ex-dates it was held into), per unit of
+  the money it was entered with; `size` is the share of the equity it was entered with. The win rate, average win and
+  loss are the trades' own; the profit factor weighs each trade by its size, what it made for the account (until
+  2026-09-29 the carry was left out, a long perp held through 2021's funding showing it as profit, and a trade a model
+  sized to a tenth weighed as much as a full one).
 * **Beyond luck** — every evaluation saved is a try the best results were picked from: `P(beyond luck)` is the
   probability that a record's Sharpe is above what the best of that many worthless tries would show over a record of
   the same length (`significance.deflated`: Bailey & Lopez de Prado's deflated Sharpe, with its skew and kurtosis;
@@ -499,8 +509,10 @@ and without it, and writes reports/peer_check.md.
   1. Sharpe beyond luck: Monte Carlo 5th-percentile Sharpe above zero, and P(beyond luck) at least 95%;
   2. beats buy & hold beyond luck: the Sharpe above holding the same list over the same days (above zero against
      cash), t (paired block bootstrap, 20-day blocks) at least what luck gives the best of the tries one time in
-     twenty: the 95th percentile of their best score were none of them skilled (`board.luck_of`, a familywise test at
-     5%, maxT; 3.61 on 2026-09-25);
+     twenty: the 95th percentile of their best score were none of them skilled, their scores correlated as the
+     records' excess over holding (`board.luck_of`, `Tries.best_95_excess`, a familywise test at 5%, maxT; the records'
+     own correlation had put the bar lower where the tries share a market, 2.2 where no skill in forty reaches 3.0 one
+     time in twenty);
   3. timing beats random: p below 0.05;
   4. not overfitted: the probability of backtest overfitting (combinatorially symmetric cross-validation of the
      grid's records, 10 blocks; a choice ranked at the median counts as overfitted, as the paper's logit at zero does)
@@ -518,7 +530,9 @@ and without it, and writes reports/peer_check.md.
   8. a bar later: still makes money with every position taken a bar later, on the same choices;
   9. costs x3: still makes money at three times the modelled costs (a spot quote of a commodity: three times the
      spreads its broker quoted), a CME future at 10bp a side (thin intraday quotes its flat 2bp understates);
-  10. most names make money: at least half of the names it traded made money on their trades;
+  10. most names make money: at least half of the names it traded made the account money on their trades, net of
+      costs and carry, each trade weighed by the share of the equity it was entered with (`engine.trades.made`; the
+      profit factor is weighed so too);
   11. neighbouring lists: on a Top-N list, Top-(N-d) and Top-(N+d) (d = 20% of N rounded to 5, at least 5 and at
       most half of N: 2/4, 5/15, 40/60, 80/120) make money and keep half its Sharpe; evaluated inside the result's
       evaluation, never saved;
@@ -574,10 +588,11 @@ and without it, and writes reports/peer_check.md.
   weekly rebalance); between, a weight drifts with its price. Until 2026-09-27 every weight was traded back to its
   target on every bar, selling a trend's winners down each bar (SMA 20/200 on crypto Top-10 1d: 6.1% a year where
   held units make 10.2%, on stocks Top-10 1d 10.2% against 11.5%; IBS's short trades within 0.5% either way) and
-  rebalancing every bar a book meant to be rebalanced monthly. A book's decision that repeats its weights (the same
-  names picked again) trades nothing: brought back to them at every decision instead, `sector_rotation` and
-  `dual_momentum` on the ETFs and crypto Top-10 (10-40% of their monthly decisions repeat) moved by 0.04 pp a month,
-  0.006 of Sharpe and 0.6 pp of drawdown at most (2026-09-29). Funding, borrow and dividends are cash: they change the
+  rebalancing every bar a book meant to be rebalanced monthly. A book is also brought back to its weights at each of
+  its decisions (its `rebalance` key: a month, a week, n days; `Strategy.decisions`), whether or not they moved: until
+  2026-09-29 a decision that picked the same names again traded nothing and the book drifted from them (10-40% of
+  `sector_rotation`'s and `dual_momentum`'s monthly decisions on the ETFs and crypto Top-10; 0.04 pp a month, 0.006 of
+  Sharpe and 0.6 pp of drawdown at most). Funding, borrow and dividends are cash: they change the
   equity and none of the units held, so a long that pays funding is a larger share of the equity after it, as a
   perp's margin pays it. Until 2026-09-29 each position kept its share through them, as if every carry were paid by
   selling a slice of every holding: a long held through 2021's funding was sold down (`tsmom` long only over 12
@@ -620,7 +635,10 @@ and without it, and writes reports/peer_check.md.
   its hours' spreads for a stop or a target filled inside it, at the close for a fill at the close; a bar with no
   quote of its own (the broker's daily pause, where the vendor prints one) the last spread quoted, and a bar before
   the first on record what the first year quoted at the same hour of the day, in dollars (the brokers set these
-  spreads in dollars and seldom move them). Measured at the hours' close (`spread_refresh`), a month's median of the
+  spreads in dollars and seldom move them: gold's stood at $0.60-0.62 from 2003 to 2008 while its price went from $372
+  to $883, silver's at $0.04-0.06 from 2011 to 2015 while its price halved; in basis points the old years were the
+  wider ones, gold 16 bp in 2003 and 0.3 in 2025, which a spread carried back in basis points would have turned into
+  the cheapest). Measured at the hours' close (`spread_refresh`), a month's median of the
   full spread: gold 3.9 bp in 2015-08 and 0.35 in 2025-04, platinum 54 bp in 2020-06 and 17 in 2026-08, palladium 203
   and 31, crude 14 and 1.7; a flat 2bp a side had been eleven times gold's half-spread of 2025-04, an eighth of
   palladium's of 2026-08 and a fiftieth of its 2020-06 one.

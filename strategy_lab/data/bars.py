@@ -140,7 +140,8 @@ class Panel:
         return self.close.index
 
     def truncate(self, end: pd.Timestamp) -> "Panel":
-        cut = {f: getattr(self, f).loc[:end] for f in FIELDS}
+        """The panel's bars up to `end`, its fields not read left out (a panel of closes and dollar volumes only)."""
+        cut = {f: None if getattr(self, f) is None else getattr(self, f).loc[:end] for f in FIELDS}
         return Panel(self.timeframe, self.instruments, **cut)
 
     def one(self, instrument_id: str) -> pd.DataFrame:

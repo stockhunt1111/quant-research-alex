@@ -317,7 +317,9 @@ CREATE TABLE instrument_stats (
 -- one time in twenty: lists — every list result, the luck bar of its checks; picks — every strategy_pick result;
 -- assets — the strategies run on instruments alone, every (strategy, instrument, timeframe) pair scored once however
 -- many lists scored it (board.refresh_asset_tries). covers: the family's results it was worked out on (how many, the
--- last id, the last evaluated_at): they changed since when it no longer matches.
+-- last id, the last evaluated_at): they changed since when it no longer matches. best_95_excess: the same one time in
+-- twenty for the t of a Sharpe against holding, whose scores move as the records' excess over their buy & hold (NULL:
+-- a count worked out before it was kept, or a family whose results are not judged against holding: picks).
 CREATE TABLE tries (
     id          INTEGER PRIMARY KEY,
     family      TEXT NOT NULL CHECK (family IN ('lists', 'picks', 'assets')),
@@ -326,7 +328,8 @@ CREATE TABLE tries (
     saved       INTEGER NOT NULL,
     independent REAL NOT NULL,
     best_95     REAL NOT NULL,
-    code_sha    TEXT NOT NULL
+    code_sha    TEXT NOT NULL,
+    best_95_excess REAL
 ) STRICT;
 
 -- An instrument's own tries in a count of family 'assets': its pairs (its timeframes, a rule and its variants on it),
@@ -338,6 +341,7 @@ CREATE TABLE instrument_tries (
     saved         INTEGER NOT NULL,
     independent   REAL NOT NULL,
     best_95       REAL NOT NULL,
+    best_95_excess REAL,
     PRIMARY KEY (tries_id, instrument_id)
 ) STRICT, WITHOUT ROWID;
 

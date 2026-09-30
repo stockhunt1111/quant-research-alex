@@ -8,7 +8,11 @@ or a target fills. A bar without an hour of its own (the broker's daily pause, w
 last spread quoted before it. A bar before the first hour on record takes what the first year quoted at the same hours
 of the day (UTC), at the median: the brokers set these spreads in dollars and seldom move them (Dukascopy's platinum
 $2.66 in both 2024-06 and 2026-08, crude's $0.05 at $40 and at $110), so a dollar spread carries back where one in
-basis points would shrink with the price.
+basis points would shrink with the price. Measured over the years on record (2026-09-30, the yearly median of the
+hours' spread): gold's stood at $0.60-0.62 from 2003 to 2008 while its price went from $372 to $883 (16 bp to 7), and
+silver's at $0.04-0.06 from 2011 to 2015 while its price fell from $35 to $16 (18 bp to 31); the spreads of earlier
+years were the wider ones in basis points (gold 16 bp in 2003, 0.3 in 2025), so a spread carried back in basis points
+would have made the old years the cheapest to trade. Silver's daily bars of 1982-2002 pay 34-87 bp a side so.
 """
 from __future__ import annotations
 

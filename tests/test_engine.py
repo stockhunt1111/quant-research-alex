@@ -11,14 +11,15 @@ RATE = (COSTS["us_equity"].commission_bps + COSTS["us_equity"].half_spread_bps) 
 BORROW = COSTS["us_equity"].borrow_bps_annual / 1e4
 
 
-def _units_account(fill_px, close, T, book=False, rate=None):
+def _units_account(fill_px, close, T, book=False, rate=None, refill=None):
     """An independent account kept in cash and units at the bars' prices, not in weights, without margin (the targets
     are long): at a fill whose target moved (a position's own target, or any target of a book rebalanced whole) the
     position is bought or sold to its target times the equity at the fill price, and otherwise its units are held; the
     bar's sales come first, and its purchases are paid out of the cash then, cut pro rata to it when they want more.
     A fill's cost is paid out of every holding pro rata, as the engine's (1 - cost) factor does; no carry. `fill_px[k]`
     is the price a fill before bar k's session takes place at: its open (next_open), or the close before
-    (next_close); `rate[k]` what such a fill costs a side, by instrument (RATE when not given)."""
+    (next_close); `rate[k]` what such a fill costs a side, by instrument (RATE when not given); `refill[k]`: a book
+    decided again at the close before bar k, traded back to its weights then whether or not they moved."""
     n, m = close.shape
     cash, units, last = 1.0, np.zeros(m), np.zeros(m)
     equity, out = 1.0, np.zeros(n)
@@ -26,12 +27,12 @@ def _units_account(fill_px, close, T, book=False, rate=None):
         tgt = T[k - 1]
         at_fill = cash + (units * fill_px[k]).sum()
         held = units * fill_px[k] / at_fill
-        move = np.full(m, (tgt != last).any()) if book else tgt != last
+        move = np.full(m, (tgt != last).any() or (refill is not None and refill[k])) if book else tgt != last
         new = np.where(move, tgt, held)
         sold = np.where(move, np.maximum(held - new, 0.0), 0.0)
         bought = np.where(move, np.maximum(new - held, 0.0), 0.0)
         free = cash / at_fill + sold.sum()                  # the cash the bar's sales leave, a share of the equity
-        if bought.sum() > free:
+        if bought.sum() > max(free, 0.0):
             new = np.where(bought > 0, held + bought * max(free, 0.0) / bought.sum(), new)
         after = at_fill * (1 - (np.abs(new - held) * (RATE if rate is None else rate[k])).sum())
         units = new * after / fill_px[k]
@@ -68,6 +69,20 @@ def test_next_close_fills_at_the_close_a_bar_later_and_holds_units(book):
     before = np.vstack([c[:1], c[:-1]])                                      # a fill before bar k: at k-1's close
     shifted = np.vstack([np.zeros((1, 2)), T.to_numpy()[:-1]])              # of the target decided a bar earlier
     assert np.allclose(res.returns.to_numpy(), _units_account(before, c, shifted, book), atol=1e-12)
+
+
+def test_a_book_decided_again_is_brought_back_to_its_weights_though_they_repeat():
+    from strategy_lab.strategy import period_starts
+    p = make_panel(seed=23, n=400)
+    T = pd.DataFrame(0.5, index=p.index, columns=p.ids)                  # the same two names, half each, every month
+    decided = period_starts(p.index, "M")
+    res = bt.run(p, T, book=True, decided=decided)
+    refill = np.r_[False, decided[:-1]]                                   # filled at the open after each decision
+    ref = _units_account(p.open.to_numpy(), p.close.to_numpy(), T.to_numpy(), True, refill=refill)
+    assert np.allclose(res.returns.to_numpy(), ref, atol=1e-12)
+    assert (res.turnover[refill] > 0).all() and res.turnover[~refill].iloc[2:].eq(0).all()
+    held = bt.run(p, T, book=True)                                       # without the decisions: bought once, held
+    assert held.turnover.iloc[2:].eq(0).all()
 
 
 def _long_short_account(opn, close, T, times, book):
@@ -186,6 +201,34 @@ def test_ledger_counts_a_flip_as_exit_plus_entry_and_a_resize_as_one_trade():
     assert list(tr["side"]) == [1, -1]
     assert tr["entry_time"].iloc[0] == p.index[1] and tr["exit_time"].iloc[0] == p.index[4]
     assert tr["entry_px"].iloc[1] == pytest.approx(p.open["td:AAA"].iloc[4])
+
+
+def test_a_trades_net_return_is_net_of_the_dividends_and_borrow_it_held_through(tmp_path, monkeypatch):
+    p = make_panel(ids=("td:AAA",), n=40, seed=12)
+    k = 20                                                     # the ex-date's bar: 1.5 a share to the holder the close before
+    _store_dividends(tmp_path, monkeypatch, "AAA", [_new_york_date(p.index[k])], 1.5)
+    o = p.open["td:AAA"].to_numpy()
+    for side in (1.0, -1.0):
+        T = pd.DataFrame({"td:AAA": 0.0}, index=p.index)
+        T.iloc[10:25] = 0.5 * side                            # filled at bar 11's open, sold at bar 26's
+        res = bt.run(p, T)
+        t = ledger(p, res).iloc[0]
+        by_hand = side * (o[26] / o[11] - 1) - 2 * RATE + side * 1.5 / o[11]
+        if side < 0:                                           # the short pays its borrow on its value at each open
+            days = (p.index[11:26] - p.index[10:25]) / bt.YEAR
+            by_hand -= BORROW * float(np.sum(days * o[11:26])) / o[11]
+        assert t["net_return"] == pytest.approx(by_hand, rel=1e-12), side
+        assert t["size"] == pytest.approx(0.5)
+
+
+def test_a_perp_trades_net_return_pays_the_funding_it_held_through(tmp_path, monkeypatch):
+    p = _one_perp_day(tmp_path, monkeypatch, with_minutes=False)
+    T = pd.DataFrame({"perp:AAAUSDT": [1.0, 1.0, 0.0, 0.0]}, index=p.index)   # bought at 100, sold at the open of 110
+    t = ledger(p, bt.run(p, T)).iloc[0]
+    cost = COSTS["crypto_perp"].commission_bps / 1e4 + COSTS["crypto_perp"].half_spread_bps / 1e4
+    # 0.1% of the value at each settlement held: 100 at 08:00, 16:00 and midnight the first day, then 104, 108 and 110
+    paid = 0.001 * (100 + 100 + 100 + 104 + 108 + 110) / 100
+    assert t["net_return"] == pytest.approx(110 / 100 - 1 - 2 * cost - paid, rel=1e-12)
 
 
 def _miss(p, inst, rows):

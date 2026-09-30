@@ -760,12 +760,14 @@ def _exits_walk(target, o, h, l, atr, stop, take, trail, stop_atr, take_atr, tra
 
 
 def run(panel: Panel, target: pd.DataFrame, *, fill: str = "next_open", exits: Exits | None = None,
-        book: bool = False, exit_fills: ExitFills | None = None) -> Result:
+        book: bool = False, exit_fills: ExitFills | None = None, decided: np.ndarray | None = None) -> Result:
     """The record of holding `target` (see the module's conventions). `book`: the target is a book rebalanced whole
     (a panel strategy's weights: when any of them moves, every position is traded back to its weight), not
-    independent positions each traded only when its own weight moves (a rule's). `exit_fills`: where the target's
-    trades were already closed by their exits (a rule's, `exited`: the target is cut there): the positions are closed
-    at those prices, and `exits` is not walked again."""
+    independent positions each traded only when its own weight moves (a rule's). `decided`: the bars at whose close
+    a book was decided (`Strategy.decisions`): it is traded back to its weights at the fill after each, whether or not
+    they moved (a monthly allocation that picks the same names again is rebalanced to them). `exit_fills`: where the
+    target's trades were already closed by their exits (a rule's, `exited`: the target is cut there): the positions are
+    closed at those prices, and `exits` is not walked again."""
     if fill not in ("next_open", "next_close"):
         raise ValueError(f"fill must be 'next_open' or 'next_close', got {fill!r}")
     exits = exits or Exits()
@@ -775,6 +777,10 @@ def run(panel: Panel, target: pd.DataFrame, *, fill: str = "next_open", exits: E
     T = _validate_target(target, panel, terms)
     stopped, tradable = terms.stopped, terms.tradable
     n, m = T.shape
+    lag = 1 if fill == "next_open" else 2               # the bar a decision's fill is held from
+    refill = np.zeros(n, dtype=np.bool_)                # a book decided again: brought back to its weights there
+    if book and decided is not None:
+        refill[lag:] = np.asarray(decided, dtype=np.bool_)[:n - lag]
 
     if fill == "next_close":
         F = _filled(T, tradable, stopped)                        # target of close t, filled at the close of t+1
@@ -791,7 +797,7 @@ def run(panel: Panel, target: pd.DataFrame, *, fill: str = "next_open", exits: E
             W, none.copy(), none, none, np.zeros((m, n)).T, cc, *_funding_args(terms.funding),
             *_exit_moments(np.zeros(0, np.int64), np.zeros(0, np.int64), np.zeros(0, np.int64), m),
             panel.index.asi8, terms.dividends.to_numpy(), rates.flat, rates.column, at_fill, at_fill,
-            terms.borrow_rate, terms.dt_years, filled_on, book, True, MAX_GROSS))
+            terms.borrow_rate, terms.dt_years, filled_on, book, refill, True, MAX_GROSS))
 
     if exit_fills is not None:
         w_session = _filled(T, tradable, stopped)
@@ -813,7 +819,7 @@ def run(panel: Panel, target: pd.DataFrame, *, fill: str = "next_open", exits: E
         w_session, exit_px, panel.open.to_numpy(), panel.high.to_numpy(), terms.gap.to_numpy(), terms.intra.to_numpy(),
         *_funding_args(terms.funding), *_exit_moments(rows, cols, moments, m), panel.index.asi8,
         terms.dividends.to_numpy(), rates.flat, rates.column, rates.at_open, rates.during, terms.borrow_rate,
-        terms.dt_years, tradable, book, False, MAX_GROSS))
+        terms.dt_years, tradable, book, refill, False, MAX_GROSS))
 
 
 def _funding_args(f: _Funding) -> tuple:
@@ -975,13 +981,14 @@ def _funding_paid(t, j, closed, liquidated_now, grow, at_close, f_next, f_end, f
 @njit(cache=True, error_model="numpy")
 def _held_returns(w, exit_px, opn, high, gap, intra, fund_at_close, fund_start, fund_end, fund_bar, fund_moment,
                   fund_ratio, exit_start, exit_end, exit_bar, exit_moment, closes_ns, dividends, flat_rate, rate_column,
-                  fill_rate, exit_rate, borrow_rate, dt_years, tradable, book, paid_after_fill, max_gross):
+                  fill_rate, exit_rate, borrow_rate, dt_years, tradable, book, refill, paid_after_fill, max_gross):
     """Each bar's net return, gross return, cost, carry and turnover of an account that holds units, the weight each
     position was last filled to, the exposure held through each bar and the exposure its fills could not buy: a
     position is bought or resized to its fill `w` (a fraction of the equity at that moment) and then held, its weight
     drifting with its price against the book's, until its fill moves again: a rule's own fill (`book` off: an entry,
     an exit, a resize of its share), or any fill of a book rebalanced whole (`book` on: a panel strategy's rebalance,
-    each instrument traded to its weight where it trades that bar). No fill takes the positions held past `max_gross`
+    each instrument traded to its weight where it trades that bar; `refill`: the bars a book decided again is traded
+    back to its weights on though none of them moved). No fill takes the positions held past `max_gross`
     of the equity: the exposure a bar's fills add beyond what the positions they trade already hold is cut, pro rata,
     to the capital the others leave free (`_funded`), as a cash account buys. `exit_px`: where an intrabar exit closed
     a position; the walk writes a short's liquidation into it (at LIQUIDATION times the short's average entry, where
@@ -1054,7 +1061,7 @@ def _held_returns(w, exit_px, opn, high, gap, intra, fund_at_close, fund_start, 
         den = 1.0 + gap_sum
         if den == 0.0:
             den = 1.0
-        rebalance = book and moved[t]
+        rebalance = book and (moved[t] or refill[t])
         # the fills of the bar, and what they add to the exposure the positions keep: more than the capital left free
         # is not bought
         kept = 0.0

@@ -106,6 +106,8 @@ class Tries:
     saved: int
     independent: float
     best_95: float
+    best_95_excess: float | None = None     # the same for the t against holding: its scores move as the records'
+                                            # excess over their buy & hold (None: not worked out, `vs_hold_bar`)
 
     def __str__(self) -> str:
         return f"{self.independent:.0f} independent of {self.saved} tries"
@@ -114,8 +116,17 @@ class Tries:
 TRY_CODE = ["strategy_lab/board.py", "strategy_lab/significance.py"]     # the code the count comes from
 
 
-def _tries_row(row) -> Tries:
-    return Tries(int(row["saved"]), float(row["independent"]), float(row["best_95"]))
+def tries_row(row) -> Tries:
+    excess = row["best_95_excess"]
+    return Tries(int(row["saved"]), float(row["independent"]), float(row["best_95"]),
+                 None if excess is None else float(excess))
+
+
+def vs_hold_bar(n: Tries) -> float:
+    """The t a record's Sharpe against holding needs to beat luck: the best of the tries' t reaches it one time in
+    twenty, the tries correlated as their excess over holding (`best_95_excess`); a count kept before that bar was
+    worked out gives the records' own bar until it is worked out again."""
+    return n.best_95 if n.best_95_excess is None else n.best_95_excess
 
 
 def current_tries(conn) -> Tries | None:
@@ -124,14 +135,14 @@ def current_tries(conn) -> Tries | None:
     if row is None or row["covers"] != db.results_fingerprint(conn, "lists") \
             or row["code_sha"] != provenance.sha_of(TRY_CODE):
         return None
-    return _tries_row(row)
+    return tries_row(row)
 
 
 def last_tries(conn) -> Tries | None:
     """The last count kept, whether or not it still covers the list results (a result saved since is judged by it
     until the count is worked out again)."""
     row = db.latest_tries(conn, "lists")
-    return None if row is None else _tries_row(row)
+    return None if row is None else tries_row(row)
 
 
 def tries(conn=None) -> Tries:
@@ -154,19 +165,33 @@ def _one_count_at_a_time() -> Iterator[None]:
             fcntl.flock(f, fcntl.LOCK_UN)
 
 
-def list_records(conn) -> tuple[pd.DataFrame, int, str]:
-    """Every list result's out-of-sample record (a column each), read in one transaction with the count of list
-    results and the fingerprint they make."""
+def _excess(conn, rows) -> dict:
+    """Each result's out-of-sample record less its buy & hold over the same days (`rows`: result id, benchmark id and
+    the record; a result compared with cash, or without a kept buy & hold, less nothing)."""
+    held: dict = {}
+    out = {}
+    for rid, bid, record in rows:
+        if bid is not None and bid not in held:
+            held[bid] = db.benchmark_series(conn, bid)
+        out[rid] = record if bid is None else record - held[bid].reindex(record.index).fillna(0.0)
+    return out
+
+
+def list_records(conn) -> tuple[pd.DataFrame, pd.DataFrame, int, str]:
+    """Every list result's out-of-sample record (a column each) and its excess over its buy & hold, read in one
+    transaction with the count of list results and the fingerprint they make."""
     conn.execute("BEGIN")
     try:
         cover = db.results_fingerprint(conn, "lists")
         saved = conn.execute("SELECT count(*) FROM result WHERE instrument_id IS NULL").fetchone()[0]
-        rows = conn.execute("SELECT r.id, s.first_day, s.days, s.series FROM result r JOIN result_series s ON "
-                            "s.result_id = r.id AND s.kind = 'out_of_sample' WHERE r.instrument_id IS NULL").fetchall()
+        rows = conn.execute("SELECT r.id, r.benchmark_id, s.first_day, s.days, s.series FROM result r JOIN "
+                            "result_series s ON s.result_id = r.id AND s.kind = 'out_of_sample' WHERE "
+                            "r.instrument_id IS NULL").fetchall()
+        daily = {r["id"]: db.decode_series(r["first_day"], r["days"], r["series"]) for r in rows}
+        excess = _excess(conn, [(r["id"], r["benchmark_id"], daily[r["id"]]) for r in rows])
     finally:
         conn.execute("COMMIT")
-    daily = {r["id"]: db.decode_series(r["first_day"], r["days"], r["series"]) for r in rows}
-    return pd.DataFrame(daily), saved, cover
+    return pd.DataFrame(daily), pd.DataFrame(excess), saved, cover
 
 
 def refresh_tries(conn=None) -> Tries:
@@ -176,12 +201,14 @@ def refresh_tries(conn=None) -> Tries:
         kept = current_tries(c)
         if kept is not None:
             return kept
-        daily, saved, cover = list_records(c)
+        daily, excess, saved, cover = list_records(c)
         if saved > daily.shape[1]:
             LOG.warning("%d list results have no out-of-sample record to correlate: counted as independent tries",
                         saved - daily.shape[1])
-        n = Tries(saved, *luck_of(daily, extra=saved - daily.shape[1]))
-        db.save_tries(c, "lists", cover, n.saved, n.independent, n.best_95, provenance.sha_of(TRY_CODE))
+        n = Tries(saved, *luck_of(daily, extra=saved - daily.shape[1]),
+                  luck_of(excess, extra=saved - daily.shape[1])[1])
+        db.save_tries(c, "lists", cover, n.saved, n.independent, n.best_95, provenance.sha_of(TRY_CODE),
+                      best_95_excess=n.best_95_excess)
         LOG.info("luck is counted over %s", n)
         return n
 
@@ -199,7 +226,7 @@ class AssetTries:
 
 
 def _asset_tries_of(conn, row) -> AssetTries:
-    return AssetTries(_tries_row(row), {r["instrument_id"]: _tries_row(r) for r in db.instrument_tries(conn, row["id"])})
+    return AssetTries(tries_row(row), {r["instrument_id"]: tries_row(r) for r in db.instrument_tries(conn, row["id"])})
 
 
 def current_asset_tries(conn) -> AssetTries | None:
@@ -218,25 +245,32 @@ def last_asset_tries(conn) -> tuple[int, AssetTries] | None:
     return None if row is None else (row["id"], _asset_tries_of(conn, row))
 
 
-def asset_records(conn) -> tuple[dict[str, pd.DataFrame], str]:
+def asset_records(conn) -> tuple[dict[str, pd.DataFrame], dict[str, pd.DataFrame], str]:
     """Every pair's out-of-sample record, a block of columns an instrument (a pair without a record: a column with no
-    day, an independent try), read in one transaction with the fingerprint they make."""
+    day, an independent try), and each record's excess over its buy & hold in blocks alike, read in one transaction
+    with the fingerprint they make."""
     conn.execute("BEGIN")
     try:
         cover = db.results_fingerprint(conn, "assets")
-        rows = conn.execute("SELECT r.strategy, r.instrument_id, r.timeframe, s.first_day, s.days, s.series FROM result r "
-                            "LEFT JOIN result_series s ON s.result_id = r.id AND s.kind = 'out_of_sample' WHERE "
-                            f"{db.FAMILIES['assets']} ORDER BY r.id").fetchall()
+        rows = conn.execute("SELECT r.id, r.benchmark_id, r.strategy, r.instrument_id, r.timeframe, s.first_day, s.days, "
+                            "s.series FROM result r LEFT JOIN result_series s ON s.result_id = r.id AND s.kind = "
+                            f"'out_of_sample' WHERE {db.FAMILIES['assets']} ORDER BY r.id").fetchall()
+        pairs: dict[str, dict] = {}
+        picked = []
+        for r in rows:
+            mine = pairs.setdefault(r["instrument_id"], {})
+            key = (r["strategy"], r["timeframe"])
+            if key not in mine:                 # scored from two lists, a pair is the same bet twice
+                mine[key] = (pd.Series(dtype=float) if r["series"] is None
+                             else db.decode_series(r["first_day"], r["days"], r["series"]))
+                picked.append((r["instrument_id"], key, r["benchmark_id"], mine[key]))
+        excess = _excess(conn, [((i, k), b, s) for i, k, b, s in picked])
     finally:
         conn.execute("COMMIT")
-    pairs: dict[str, dict] = {}
-    for r in rows:
-        mine = pairs.setdefault(r["instrument_id"], {})
-        key = (r["strategy"], r["timeframe"])
-        if key not in mine:                     # scored from two lists, a pair is the same bet twice
-            mine[key] = (pd.Series(dtype=float) if r["series"] is None
-                         else db.decode_series(r["first_day"], r["days"], r["series"]))
-    return {i: pd.DataFrame(p) for i, p in pairs.items()}, cover
+    over: dict[str, dict] = {}
+    for (i, k), s in excess.items():
+        over.setdefault(i, {})[k] = s
+    return ({i: pd.DataFrame(p) for i, p in pairs.items()}, {i: pd.DataFrame(p) for i, p in over.items()}, cover)
 
 
 def refresh_asset_tries(conn=None) -> AssetTries | None:
@@ -246,16 +280,18 @@ def refresh_asset_tries(conn=None) -> AssetTries | None:
         kept = current_asset_tries(c)
         if kept is not None:
             return kept
-        blocks, cover = asset_records(c)
+        blocks, excess, cover = asset_records(c)
         if not blocks:
             return None
         names = sorted(blocks)
         (independent, best_95), each = luck_of_each([blocks[i] for i in names])
-        n = AssetTries(Tries(sum(b.shape[1] for b in blocks.values()), independent, best_95),
-                       {i: Tries(blocks[i].shape[1], *e) for i, e in zip(names, each)})
+        (_, over_95), over_each = luck_of_each([excess[i] for i in names])
+        n = AssetTries(Tries(sum(b.shape[1] for b in blocks.values()), independent, best_95, over_95),
+                       {i: Tries(blocks[i].shape[1], *e, o[1]) for i, e, o in zip(names, each, over_each)})
         db.save_tries(c, "assets", cover, n.every.saved, n.every.independent, n.every.best_95,
                       provenance.sha_of(TRY_CODE),
-                      instruments={i: (t.saved, t.independent, t.best_95) for i, t in n.each.items()})
+                      instruments={i: (t.saved, t.independent, t.best_95, t.best_95_excess) for i, t in n.each.items()},
+                      best_95_excess=n.every.best_95_excess)
         LOG.info("single assets' luck is counted over %s on %d instruments (a median of %.0f independent tries each)",
                  n.every, len(n.each), float(np.median([t.independent for t in n.each.values()])))
         return n
@@ -280,11 +316,10 @@ def luck_of(returns: pd.DataFrame | list[pd.DataFrame], extra: int = 0, seed: in
     nested lists, on neighbouring timeframes or with its model wins and loses with itself: counted as independent
     tries, it would raise the bar a result is judged against as if luck had that many more chances. The correlation is
     the records' own, which is the Sharpe's; the t against holding moves with the records' excess over holding, less
-    alike across the tries of one list than the records are, so its familywise bar reads lower than it should where
-    the tries share their market (no skill in forty tries that are the list plus noise: a bar of 2.48 where the best t
-    reaches 3.00 one time in twenty). On the saved results of 2026-09-29 the excess's correlation gave 3.79 for the
-    lists against 3.75 (no list's verdict changed; the best t was 3.41) and 3.05 against 3.09 at the median of the
-    instruments."""
+    alike across the tries of one list than the records are, and its bar is worked out on that excess (`Tries.
+    best_95_excess`): with the records' own correlation it read lower than it should where the tries share their market
+    (no skill in forty tries that are the list plus noise: a bar of 2.48 where the best t reaches 3.00 one time in
+    twenty; on the saved results of 2026-09-29, 3.75 for the lists against 3.79 on their excess)."""
     roots = []
     for block in [returns] if isinstance(returns, pd.DataFrame) else returns:
         x = block.to_numpy(dtype=np.float64)
@@ -506,7 +541,7 @@ def _judged(cid: str, m: dict, sharpe: float, n_tries: Tries, deflated: dict,
         return (value, f"P5 > 0 and ≥ {significance.PASS_PROB:.0%}",
                 m["mc_sharpe_p5"] is not None and m["mc_sharpe_p5"] > 0 and prob >= significance.PASS_PROB)
     if cid == "vs_hold":
-        bar = n_tries.best_95
+        bar = vs_hold_bar(n_tries)
         t = m["t"]
         return (f"t {_s(t)} (Sharpe {_s(m['sharpe'])} vs {_s(m['sharpe_other'])} held)", f"t ≥ {bar:.2f}",
                 t is not None and t >= bar)

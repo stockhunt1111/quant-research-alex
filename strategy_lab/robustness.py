@@ -48,6 +48,7 @@ from strategy_lab import log, metrics, significance, trade_model
 from strategy_lab.config import COSTS, SEED
 from strategy_lab.data import spreads
 from strategy_lab.data.bars import Panel
+from strategy_lab.engine.trades import made
 from strategy_lab.strategy import Strategy
 
 LOG = log.get("robustness")
@@ -209,10 +210,11 @@ def eras(oos: pd.Series) -> dict:
 
 
 def names(trades: pd.DataFrame) -> dict:
-    """The share of the names the strategy traded out-of-sample whose trades made money, compounded."""
+    """The share of the names the strategy traded out-of-sample whose trades made the account money: what each trade
+    made, net of costs and carry, weighed by the share it was entered with (`engine.trades.made`), summed by name."""
     if trades.empty:
         return {"too_short": "no trade out-of-sample"}
-    each = np.log1p(trades["net_return"].clip(lower=-0.999999)).groupby(trades["instrument"]).sum()
+    each = made(trades).groupby(trades["instrument"]).sum()
     return {"instruments": int(len(each)), "positive": int((each > 0).sum()), "share": float((each > 0).mean())}
 
 

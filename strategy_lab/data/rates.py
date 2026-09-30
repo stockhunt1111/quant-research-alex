@@ -54,11 +54,13 @@ def daily_rate() -> pd.Series:
 
 def trailing_return(at: pd.DatetimeIndex, months: int) -> pd.Series:
     """What T-bills returned over the `months` calendar months before each time in `at`, compounded day by day at the
-    rate quoted the day before (a day's quote is published after it): the hurdle of absolute momentum. NaN before
-    the rates begin."""
+    rate quoted the day before (a day's quote is published after it), to the end of the day a time's bar belongs to
+    (a bar closing at midnight ends the day before: at that instant the new day's interest is not earned yet): the
+    hurdle of absolute momentum. NaN before the rates begin."""
     growth = (1.0 + daily_rate().shift(1).fillna(0.0)).cumprod()
-    now = growth.reindex(at.floor("D"), method="ffill").to_numpy()
-    then = growth.reindex((at - pd.DateOffset(months=months)).floor("D"), method="ffill").to_numpy()
+    day = (at - pd.Timedelta(microseconds=1)).floor("D")
+    now = growth.reindex(day, method="ffill").to_numpy()
+    then = growth.reindex((day - pd.DateOffset(months=months)), method="ffill").to_numpy()
     return pd.Series(now / then - 1.0, index=at)
 
 

@@ -98,6 +98,14 @@ class Strategy:
         """The engine trades every position back to its weight when any weight moves (`backtest.run(book=True)`)."""
         return self.kind == "panel" and self.book
 
+    def decisions(self, panel: Panel, params: dict) -> np.ndarray | None:
+        """The bars at whose close a book is decided (its `rebalance` grid key: a month, a week, n days;
+        `period_starts`), where the engine brings every position back to its weight even when the weights repeat
+        (`backtest.run(decided=)`); None for a strategy without them (a rule, a panel of positions of their own)."""
+        if not self.rebalanced_whole or "rebalance" not in params:
+            return None
+        return period_starts(panel.index, params["rebalance"])
+
     def grid_for(self, names: int | None = None) -> dict:
         """The grid run on a list of `names` instruments: of the `slots` values only those below that number (user,
         2026-09-27: a Top-3 list runs one slot per name only), of the numbers of names to hold (`top_k`) only those up

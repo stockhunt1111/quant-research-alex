@@ -279,8 +279,7 @@ class Research:
     def tries(self) -> tuple[int | None, board.Tries | None]:
         """The last luck bar kept for the lists (a result saved since is judged by it until it is worked out again)."""
         row = db.latest_tries(self.conn(), "lists")
-        return (None, None) if row is None else (row["id"], board.Tries(row["saved"], row["independent"],
-                                                                        row["best_95"]))
+        return (None, None) if row is None else (row["id"], board.tries_row(row))
 
     def asset_tries(self) -> tuple[int | None, board.AssetTries | None]:
         """The last luck bar kept for the single assets (a result saved since is judged by it until it is worked out
@@ -294,7 +293,7 @@ class Research:
 
     def picks_tries(self) -> board.Tries | None:
         row = db.latest_tries(self.conn(), "picks")
-        return None if row is None else board.Tries(row["saved"], row["independent"], row["best_95"])
+        return None if row is None else board.tries_row(row)
 
     def is_current(self, sha: str, files: list[str]) -> bool:
         with self._lock:

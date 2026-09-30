@@ -81,10 +81,12 @@ def _run(strategy: Strategy, panel: Panel, cfg: dict, member, fill: str, memo: d
     bars later, and a stop or target walked from the fill the delayed order gets (it rests in the market from there,
     not from the rule's decision)."""
     target, fills = strategy.target_and_exits(panel, cfg, member, memo, signals)
+    decided = strategy.decisions(panel, cfg)
     if delay:
         target, fills = target.shift(delay).fillna(0.0), None
+        decided = None if decided is None else np.r_[np.zeros(delay, dtype=bool), decided[:-delay]]
     return bt.run(panel, target, fill=fill, exits=strategy.exits(cfg), book=strategy.rebalanced_whole,
-                  exit_fills=fills)
+                  exit_fills=fills, decided=decided)
 
 
 def _switch_cost(panel: Panel, a: bt.Result | None, b: bt.Result | None, when: pd.Timestamp) -> float:

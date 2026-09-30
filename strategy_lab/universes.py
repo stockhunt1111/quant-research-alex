@@ -38,6 +38,9 @@ STABLECOINS = {"USDCUSDT", "BUSDUSDT", "TUSDUSDT", "FDUSDUSDT", "USDPUSDT", "DAI
 # Tokens of gold: a claim on bullion, priced as gold, not a crypto asset. Binance classes them as coins (its RWA
 # subtype also covers crypto tokens such as MANTRA and CFG), so they are named here.
 COMMODITY_TOKENS = {"PAXGUSDT", "XAUTUSDT"}
+# Binance's index perps delisted before its contract list was taken, so their underlying type is not on record there:
+# its BLUEBIRD and FOOTBALL indices (the listed ones, DEFI and BTCDOM, are excluded by their type)
+INDEX_PERPS = {"BLUEBIRDUSDT", "FOOTBALLUSDT"}
 
 # Stockhunt's lists. Stocks: every name its point-in-time top 100 has held since 2003.
 STOCKHUNT_STOCKS = [
@@ -160,7 +163,7 @@ def crypto_candidates(timeframe: str) -> list[str]:
     contracts = _reference("binance_perp_contracts.csv")
     not_crypto = set(contracts.loc[contracts["underlying_type"] != "COIN", "symbol"])
     return sorted(s for s in store.symbols("perp", timeframe)
-                  if s not in STABLECOINS and s not in COMMODITY_TOKENS and s not in not_crypto)
+                  if s not in STABLECOINS and s not in COMMODITY_TOKENS and s not in INDEX_PERPS and s not in not_crypto)
 
 
 def coiniq_coins(timeframe: str) -> list[str]:
@@ -171,7 +174,7 @@ def coiniq_coins(timeframe: str) -> list[str]:
     return [s for s in crypto_candidates(timeframe) if s in same]
 
 
-LIST_BUFFER = 1.5      # a member keeps its seat until it ranks below 1.5 x n
+LIST_BUFFER = 1.5      # a member keeps its seat until it ranks below 1.5 x n, a newcomer inside n / 1.5 takes one at once
 
 
 def top_liquid(panel: Panel, n: int, lookback_days: int = 60, eligible: pd.DataFrame | None = None,
@@ -180,18 +183,23 @@ def top_liquid(panel: Panel, n: int, lookback_days: int = 60, eligible: pd.DataF
 
     A member keeps its seat while it ranks within `band` x n and still trades; a seat it gives up goes to the
     best-ranked instrument outside that trades, so the list holds n names (fewer only while fewer trade: a name
-    whose median is zero, a market that stopped, never fills an empty seat). A buffer zone, as index
-    providers use: a name at the edge no longer flips in and out every month, and a newcomer ranked inside the top n
-    waits for a seat.
+    whose median is zero, a market that stopped, never fills an empty seat). A buffer zone both ways, as index
+    providers use: a name at the edge no longer flips in and out every month, a newcomer ranked inside the top n
+    waits for a seat, and one ranked inside n / `band` takes one at once, from the member ranked lowest. With the
+    buffer on the way out alone, a name ranked sixth waited for months outside a Top-100 while its members ranked 101st
+    to 150th kept their seats (YHOO at the re-pick of 1999-12-31; 1000SHIB 14th and ICP 15th-20th of the crypto
+    Top-100 for two and three re-picks), and a narrower list held names its wider one did not.
 
     The median runs over the last `lookback_days` calendar days, so the window means the same on every timeframe;
     a day on which other instruments traded and this one did not counts as zero, so a name that stops trading
     falls out at a following re-rank. An instrument competes once its first bar is at least half that window old.
-    With `eligible`, only instruments eligible on the ranking day compete for the n slots. A member keeps its slot
-    through bars it missed until the next re-rank; a market that is delisted (`engine.backtest.ended`, where a backtest
-    closes the position: for good, or until it is listed anew) gives up its seat the day after its last trade, and
-    the best-ranked name outside that trades takes it then, the other seats staying as they are until the re-rank;
-    a market listed anew competes again from the re-rank after it.
+    With `eligible`, only instruments eligible on the ranking day compete for the n slots, and a member that stops
+    being eligible (a stock leaving the S&P 500) gives up its seat on its first day out to the best-ranked eligible
+    name outside, as a delisted market does (its seat had stood empty to the month's end: stocks Top-100 held 97-99
+    names on 2.3% of its days). A member keeps its slot through bars it missed until the next re-rank; a market that is
+    delisted (`engine.backtest.ended`, where a backtest closes the position: for good, or until it is listed anew) gives
+    up its seat the day after its last trade, and the best-ranked name outside that trades takes it then, the other
+    seats staying as they are until the re-rank; a market listed anew competes again from the re-rank after it.
     """
     dv = panel.dollar_volume
     day = (dv.index - pd.Timedelta(microseconds=1)).normalize()
@@ -212,6 +220,10 @@ def top_liquid(panel: Panel, n: int, lookback_days: int = 60, eligible: pd.DataF
             before = panel.close[c].iloc[:k].last_valid_index()
             if before is not None:
                 stops.setdefault(day[panel.index.get_loc(before)], set()).add(c)
+    if eligible is not None:                                # ... and a member's at the end of its last eligible day
+        okv = ok.to_numpy()
+        for k, j in zip(*np.nonzero(okv[:-1] & ~okv[1:])):
+            stops.setdefault(med.index[k], set()).add(med.columns[j])
     held: list = []
     seats, dates = [], sorted(month_end | set(stops))
     for d in dates:
@@ -221,8 +233,13 @@ def top_liquid(panel: Panel, n: int, lookback_days: int = 60, eligible: pd.DataF
         order = list(zip(ranked.index, ranked.to_numpy()))
         if d in month_end:
             was = set(held)
-            keep = [c for rank, (c, v) in enumerate(order, 1) if c in was and rank <= band * n and v > 0]
-        else:                                               # a market stopped: only its seat changes hands
+            # ranked inside n / band, a name holds a seat whatever held it before; a member keeps its own while it
+            # ranks inside band x n, the lowest-ranked of them giving theirs up to the first
+            core = [c for rank, (c, v) in enumerate(order, 1) if rank <= n / band and v > 0]
+            inner = set(core)
+            keep = (core + [c for rank, (c, v) in enumerate(order, 1)
+                            if c in was and c not in inner and rank <= band * n and v > 0])[:n]
+        else:                                               # a market stopped or left: only its seat changes hands
             keep = [c for c in held if c not in gone]
         kept = set(keep)
         held = keep + [c for c, v in order if c not in kept and v > 0][:n - len(keep)]

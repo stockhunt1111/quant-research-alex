@@ -147,7 +147,14 @@ def test_a_rules_short_side_is_its_long_side_on_the_prices_turned_upside_down(na
     p = make_panel(ids=("td:AAA",), n=900, seed=4)
     bars, turned = p.one("td:AAA"), _upside_down(p).one("td:AAA")
     both = s.fn(bars, **params, long_only=False)
-    assert (both == s.fn(bars, **params, long_only=True) - s.fn(turned, **params, long_only=True)).all()
+    long, short = s.fn(bars, **params, long_only=True), s.fn(turned, **params, long_only=True)
+    one = (long != 0) != (short != 0)
+    assert (both[one] == (long - short)[one]).all()                                 # one side holding: that side
+    assert ((both > 0) <= (long != 0)).all() and ((both < 0) <= (short != 0)).all()
+    if name == "breakout_trail":            # stop and reverse: while both sides hold, the latest entry's side
+        assert (both[(long != 0) & (short != 0)] != 0).all() and ((long != 0) & (short != 0)).any()
+    else:                                   # the two sides exclude each other
+        assert (both == long - short).all()
     assert (both > 0).any() and (both < 0).any()                # both sides trade on this walk
 
 

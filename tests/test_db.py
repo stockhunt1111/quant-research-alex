@@ -375,9 +375,10 @@ def test_a_record_without_a_position_has_nothing_to_scale():
 def test_the_single_assets_count_keeps_each_instruments_own_tries_beside_the_lists_count(conn):
     first = db.save_tries(conn, "lists", db.results_fingerprint(conn, "lists"), 3, 2.5, 2.1, "abc")
     tid = db.save_tries(conn, "assets", db.results_fingerprint(conn, "assets"), 5, 4.2, 2.6, "abc",
-                        instruments={"td:SPY": (3, 2.4, 2.2), "td:QQQ": (2, 1.9, 2.0)})
-    assert {r["instrument_id"]: (r["saved"], r["independent"], r["best_95"]) for r in db.instrument_tries(conn, tid)} \
-        == {"td:SPY": (3, 2.4, 2.2), "td:QQQ": (2, 1.9, 2.0)}
+                        instruments={"td:SPY": (3, 2.4, 2.2, 2.3), "td:QQQ": (2, 1.9, 2.0, None)}, best_95_excess=2.7)
+    assert {r["instrument_id"]: (r["saved"], r["independent"], r["best_95"], r["best_95_excess"])
+            for r in db.instrument_tries(conn, tid)} == {"td:SPY": (3, 2.4, 2.2, 2.3), "td:QQQ": (2, 1.9, 2.0, None)}
+    assert db.latest_tries(conn, "assets")["best_95_excess"] == 2.7 and db.latest_tries(conn)["best_95_excess"] is None
     assert tuple(db.latest_tries(conn, "lists"))[:2] == (first, "lists")
 
 
