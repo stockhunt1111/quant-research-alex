@@ -138,13 +138,14 @@ def _upside_down(p: Panel) -> Panel:
 # rules whose indicators turn with the prices (moving averages, channels, bands, RSI, IBS): their short side on the
 # prices is their long side on the prices turned upside down
 MIRRORED = [("sma_cross", {"fast": 10, "slow": 100}), ("breakout_trail", {"n_in": 20, "n_out": 50}),
-            ("ibs_reversion", {"entry": 0.2})]
+            ("ibs_reversion", {"entry": 0.2}), ("pocket_pivot", {"lookback_days": 10, "ema_days": 20})]
 
 
 @pytest.mark.parametrize("name, params", MIRRORED, ids=[m[0] for m in MIRRORED])
 def test_a_rules_short_side_is_its_long_side_on_the_prices_turned_upside_down(name, params):
     s = load(name)
     p = make_panel(ids=("td:AAA",), n=900, seed=4)
+    p.volume = p.volume * np.exp(np.random.default_rng(5).normal(0.0, 0.5, p.volume.shape))   # a pocket pivot reads it
     bars, turned = p.one("td:AAA"), _upside_down(p).one("td:AAA")
     both = s.fn(bars, **params, long_only=False)
     long, short = s.fn(bars, **params, long_only=True), s.fn(turned, **params, long_only=True)

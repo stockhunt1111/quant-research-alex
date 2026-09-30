@@ -58,15 +58,23 @@ WIDE = ["us_stocks_top50", "us_stocks_top100", "crypto_top50", "crypto_top100"]
 # a model refitted per instrument and window: the three- and ten-name steps and the small markets
 ML = ["us_stocks_top3", "us_stocks_top10", "crypto_top3", "crypto_top10", "etf_top3", "stockhunt_etfs", "etf_core",
       "fx_majors", "stockhunt_commodities", "cme_futures"]
+# the markets with an index a rule can time its names by (strategy_lab.market): not FX, not commodities
+INDEXED_MARKETS = ("Stocks", "ETFs", "Crypto")
+INDEXED = [u for u in OURS if lists.market(u) in INDEXED_MARKETS]
 ON_EVERY_LIST = ["sma_cross", "ibs_reversion", "donchian_breakout", "ema_trend", "tsmom", "breakout_trail",
                  "calm_trend", "trend_or_revert", "late_entry_trend", "rsi2_connors", "gtaa_faber", "dual_momentum",
-                 "sector_rotation", "vol_managed", "bollinger_reversion", "keltner_breakout", "ibs",
+                 "sector_rotation", "vol_managed", "bollinger_reversion", "keltner_breakout", "ibs", "pocket_pivot",
+                 "long_ma_deviation",
                  # a model grading a rule's trades learns from every name of the list at once
                  "ibs_ml_filter", "ibs_ml_sized", "rsi2_ml_filter", "rsi2_ml_sized", "bollinger_ml_filter",
-                 "bollinger_ml_sized", "trend_or_revert_ml_filter", "trend_or_revert_ml_sized"]
+                 "bollinger_ml_sized", "trend_or_revert_ml_filter", "trend_or_revert_ml_sized",
+                 "long_ma_deviation_ml_filter", "long_ma_deviation_ml_sized"]
 LIST_RUNS = [
     # (strategy, lists); a strategy is strategies/<name>.py, on every timeframe
     *[(name, OURS) for name in ON_EVERY_LIST],
+    # rules reading their market's index (`rule(market=True)`)
+    ("market_regime", INDEXED),
+    ("regime_ema_trail", INDEXED),
     ("ml_direction", ML),
     ("big_move_follow", ["us_stocks_top100", "crypto_top100", "etf_core"]),
     ("xs_momentum", WIDE + ["etf_core"]),
@@ -78,7 +86,8 @@ ALONE_RULES = ["sma_cross", "ibs_reversion", "donchian_breakout", "ema_trend", "
                "trend_or_revert", "late_entry_trend", "ml_direction", "rsi2_connors", "gtaa_faber", "vol_managed",
                "bollinger_reversion", "keltner_breakout", "ibs", "ibs_ml_filter", "ibs_ml_sized", "rsi2_ml_filter",
                "rsi2_ml_sized", "bollinger_ml_filter", "bollinger_ml_sized", "trend_or_revert_ml_filter",
-               "trend_or_revert_ml_sized"]
+               "trend_or_revert_ml_sized", "market_regime", "regime_ema_trail", "pocket_pivot", "long_ma_deviation",
+               "long_ma_deviation_ml_filter", "long_ma_deviation_ml_sized"]
 ENGINE = "ml_feature_search"    # the firm's per-symbol engine, measured: on the ML task's lists only
 
 
@@ -135,6 +144,12 @@ def _covered(inner: str, outer: str, tf: str) -> bool:
     return set(a) <= set(b)
 
 
+def runs_alone_on(name: str, universe: str) -> bool:
+    """A rule runs alone on each instrument of the list: every rule does, but one reading its market's index
+    (`rule(market=True)`) only where the list's market has one (`INDEXED_MARKETS`)."""
+    return not load(name).market or lists.per_instrument_market(universe) in INDEXED_MARKETS
+
+
 def alone_jobs(only: dict | None = None) -> list[tuple[str, str, str]]:
     """(strategy, list, timeframe) of every run of a strategy on each instrument of a list alone: the rules on the
     widest list of each market and on the ML task's lists, the firm's engine on the ML task's; a list whose instruments
@@ -152,7 +167,7 @@ def alone_jobs(only: dict | None = None) -> list[tuple[str, str, str]]:
             if repeats:
                 LOG.info("%s %s: every instrument is in %s, whose run covers the rules", u, tf, wider)
             for name in ALONE_RULES:
-                if not repeats and _wanted(only, name, u, tf):
+                if not repeats and _wanted(only, name, u, tf) and runs_alone_on(name, u):
                     out.append((name, u, tf))
             if u in lists.ML_TASK and _wanted(only, ENGINE, u, tf):
                 out.append((ENGINE, u, tf))

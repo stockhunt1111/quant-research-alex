@@ -47,6 +47,9 @@ and a newcomer bought at once, as the list's buy-and-hold holds them.
 A bar an instrument missed (a vendor gap, a halt) is not a decision point for it: a rule keeps its last position
 there, and a panel strategy sees the instrument's last close (`Panel.as_known`). The engine cannot trade an
 instrument on a bar it did not print and closes the position when its data ends.
+
+A rule may read its market's index besides its bars (`rule(market=True)`, `strategy_lab.market`): SPY's or bitcoin's
+daily closes, each as a bar knows it.
 """
 from __future__ import annotations
 
@@ -69,7 +72,7 @@ import pandas as pd
 import talib
 from numba import njit
 
-from strategy_lab import config, log, provenance
+from strategy_lab import config, log, market, provenance
 from strategy_lab.data.bars import Panel, liquidity
 from strategy_lab.data.instruments import FX_BY_TURNOVER
 from strategy_lab.engine.backtest import ExitFills, Exits, ended, exited
@@ -91,6 +94,7 @@ class Strategy:
     prepare: Callable | None = None     # (panel, configs, member): work the grid shares, done before it (see `rule`)
     exposure: bool = False          # a rule's position is a holding kept while listed, not a trade (see `rule`)
     model: bool = False             # a rule's function fits a model drawing with its module's SEED (see `rule`)
+    market: bool = False            # a rule's function reads its market's index besides its bars (see `rule`)
     book: bool = True               # a panel's weights are a book rebalanced whole, not positions of their own (`panel`)
 
     @property
@@ -240,6 +244,8 @@ def fill_signals(strategy: Strategy, panel: Panel, configs: list[dict], signals:
         sp = strategy.signal_params(cfg)
         todo.setdefault(repr(sorted(sp.items())), sp)
     code = _code_version(strategy)
+    if code is not None and strategy.market:                # its positions depend on its market's index too
+        code = f"{code}-{market.version(panel)}"
     for i in panel.ids:
         missing = [(sig, sp) for sig, sp in todo.items() if (sig, i) not in signals]
         if not missing:
@@ -547,7 +553,7 @@ def _slot_liquidity(panel: Panel) -> pd.DataFrame:
 
 
 def rule(grid: dict | None = None, name: str | None = None, description: str = "", grade: Callable | None = None,
-         prepare: Callable | None = None, exposure: bool = False, model: bool = False):
+         prepare: Callable | None = None, exposure: bool = False, model: bool = False, market: bool = False):
     """A rule: one instrument's bars in, its position out. `prepare(panel, configs, member)`, when given, runs once
     before an evaluation's grid, with the list's membership (None: every instrument held from its first bar): a rule
     whose per-instrument work is heavy and shared by the grid does it there for every instrument at once (in
@@ -561,10 +567,13 @@ def rule(grid: dict | None = None, name: str | None = None, description: str = "
     are the universe's members instead: a leaver sold at the re-pick, a newcomer bought at once.
 
     `model`: the function fits a model itself, drawing with its module's `SEED` (ml_feature_search; a rule with a
-    `prepare` step fits one there, ml_direction), so the robustness check of other seeds varies it."""
+    `prepare` step fits one there, ml_direction), so the robustness check of other seeds varies it.
+
+    `market`: the function reads its market's index besides its bars (`strategy_lab.market`: the index's daily closes
+    as each bar knows them), so its positions are kept on disk under the index's bars too."""
     def wrap(fn):
         return Strategy(name or fn.__name__, "rule", fn, grid or {}, description or (fn.__doc__ or "").strip(), grade,
-                        prepare, exposure=exposure, model=model)
+                        prepare, exposure=exposure, model=model, market=market)
     return wrap
 
 

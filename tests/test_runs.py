@@ -14,7 +14,7 @@ import resource
 import numpy as np
 import pytest
 
-from strategy_lab import db, runs
+from strategy_lab import db, lists, runs
 
 ONLY = {"strategies": ["sma_cross"], "lists": ["us_stocks_top10", "crypto_top10", "etf_core"], "timeframes": ["1d"]}
 
@@ -84,10 +84,21 @@ def test_a_run_of_one_market_evaluates_its_list_and_its_instruments_then_the_pic
     on_list = {("lists", name, "stockhunt_commodities", tf) for name, us in runs.LIST_RUNS
                if "stockhunt_commodities" in us for tf in ("1h", "4h", "1d")}
     alone = {("single_assets", name, "stockhunt_commodities", tf) for name in (*runs.ALONE_RULES, runs.ENGINE)
-             for tf in ("1h", "4h", "1d")}
+             if name not in ("market_regime", "regime_ema_trail") for tf in ("1h", "4h", "1d")}
     assert planned == on_list | alone                 # nothing of another list: its bars are not even read
     assert later == [("picks",), ("figures",)]      # which read every result and every list's bars, as after all
     assert runs.narrowed_to(only) == "Commodities All 5" and runs.narrowed_to(None) is None
+
+
+def test_rules_reading_the_market_run_on_the_markets_with_an_index_only():
+    reading = {"market_regime", "regime_ema_trail"}
+    on_lists = {(name, u) for name, u, _ in runs.list_jobs() if name in reading}
+    alone = {(name, u) for name, u, _ in runs.alone_jobs() if name in reading}
+    with_index = {"Stocks", "ETFs", "Crypto"}
+    assert {lists.market(u) for _, u in on_lists} == with_index
+    assert {lists.per_instrument_market(u) for _, u in alone} == with_index
+    assert {u for _, u in on_lists} == {u for u in lists.names(lists.OURS) if lists.market(u) in with_index}
+    assert {name for name, _ in on_lists} == {name for name, _ in alone} == reading
 
 
 def test_a_run_is_refused_a_list_strategy_or_timeframe_no_run_covers():

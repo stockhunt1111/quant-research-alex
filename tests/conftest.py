@@ -62,6 +62,30 @@ def _steady_cash_rate(monkeypatch):
     monkeypatch.setattr(rates, "daily_rate", lambda: pd.Series(CASH_RATE / 365.0, index=days))
 
 
+def market_index(seed: int = 3, start: str = "2000-01-01 21:00", days: int = 15_000) -> pd.Series:
+    """A market index's daily closes for tests: a random walk whose drift turns every 60 to 240 days, so that its trend
+    against a moving average turns on and off."""
+    rng = np.random.default_rng(seed)
+    drift = np.empty(days)
+    k, sign = 0, 1.0
+    while k < days:
+        run = int(rng.integers(60, 240))
+        drift[k:k + run] = sign * 0.002
+        k, sign = k + run, -sign
+    closes = 100 * np.exp(np.cumsum(drift + rng.normal(0, 0.01, days)))
+    return pd.Series(closes, index=pd.date_range(start, periods=days, freq="D", tz="UTC"))
+
+
+MARKET_INDEX = market_index()
+
+
+@pytest.fixture(autouse=True)
+def _market_index_in_memory(monkeypatch):
+    """A rule reading its market reads a synthetic index (`market_index`), never data/store."""
+    from strategy_lab import market
+    monkeypatch.setattr(market, "_index_closes", lambda index_id: (0, MARKET_INDEX, "synthetic"))
+
+
 @pytest.fixture(autouse=True)
 def _no_network(monkeypatch):
     def refuse(*a, **k):
