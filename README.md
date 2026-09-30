@@ -261,6 +261,9 @@ Other data commands:
   (`strategy_lab.trade_model`): `take` keeps the trades it gives a probability above the grid key `threshold` of
   making money after costs, `size` scales each by 2p - 1. One model learns from every instrument of the run at once
   (a list's names pooled, an instrument alone from its own trades), refit every 3 months on the trades already closed.
+  It is a random forest (LightGBM's random-forest mode) since 2026-09-30: against the boosted trees it had been, the
+  four filters graded to a higher Sharpe on 8 of 10 lists (median +0.06, IBS +0.06 to +0.26 on all four of its own)
+  and the sized forms on 5 of 8 (equal on 1), at shallower drawdowns and smaller sizes.
   `ibs_ml_filter`, `ibs_ml_sized`, `rsi2_ml_filter`, `rsi2_ml_sized`, `bollinger_ml_filter`, `bollinger_ml_sized`,
   `trend_or_revert_ml_filter`, `trend_or_revert_ml_sized` are IBS, RSI(2), the Bollinger reversion and the regime
   switch graded so, each its rule written again (long only, as the four rules are): rules that trade often and win

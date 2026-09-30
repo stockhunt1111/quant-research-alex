@@ -15,7 +15,16 @@ left out). Its features are the indicator families of
 instrument alone from its own trades — and from a name only the trades it started while in the universe. The model is
 refit on the walk-forward calendar (`ml.refit_rows`) on the trades that had been left by then, so a trade is graded
 by a model that saw neither it nor anything after it; before a refit has MIN_TRADES trades to learn from, no trade is
-taken.
+taken. Only a name's trades while in the universe: a list's panel holds the names it ever holds, and their trades
+from before they joined are there because they joined later (learning from them too lifted IBS's Top-50 1d record from
+a Sharpe of 0.87 to 1.03, a gain bought by knowing who joins).
+
+The model (`model`) is a random forest, LightGBM's own random-forest mode: its trees are grown on bagged samples and
+averaged, not each fit to the last one's errors. Whether a trade makes money is a noisy label, which boosting fits
+more than averaging does. Measured walk-forward on 2026-09-30 against the boosted trees it had been (the settings
+`ml.model` keeps), on the four graded rules' filters, stocks Top-10 and the 34 ETFs 1d, IBS also on stocks Top-50 and
+CME futures 4h: a higher Sharpe on 8 of 10 (median +0.06; IBS +0.06 to +0.26 on all four) and a higher return on 7; a
+forest of scikit-learn's did the same on IBS at 15 times the time.
 """
 from __future__ import annotations
 
@@ -35,6 +44,15 @@ MIN_TRADES = 100                        # the fewest closed trades a refit learn
 SEED = config.SEED                      # the model's random draws: the robustness check of other seeds varies it
 
 _GRADED: dict[str, pd.DataFrame] = {}   # a run's trades with their probability, by (data, positions, seed)
+
+
+def model(seed: int):
+    """A random forest of 200 trees of depth 5 on bagged samples of 63% of the trades and 80% of the features (LightGBM's
+    random-forest mode), each leaf of 40 trades at least."""
+    import lightgbm as lgb
+    return lgb.LGBMClassifier(boosting_type="rf", n_estimators=200, max_depth=5, num_leaves=31, min_child_samples=40,
+                              subsample=0.632, subsample_freq=1, colsample_bytree=0.8, random_state=seed, n_jobs=1,
+                              verbose=-1)
 
 
 def take(panel: Panel, wanted: pd.DataFrame, live: pd.DataFrame, threshold: float) -> pd.DataFrame:
@@ -165,7 +183,7 @@ def probabilities(x: np.ndarray, outcome: np.ndarray, decided: np.ndarray, known
             continue
         if shuffle:
             y = rng.permutation(y)
-        p[block] = ml.model(seed).fit(x[train], y).predict_proba(x[block])[:, 1]
+        p[block] = model(seed).fit(x[train], y).predict_proba(x[block])[:, 1]
     if starved:
         LOG.info("%d of %d refits had fewer than %d closed trades of both outcomes to learn from (the last on %s): "
                  "their %d trades are not graded", len(starved), len(refits), MIN_TRADES,
