@@ -244,6 +244,37 @@ def test_the_records_trades_are_the_positions_its_windows_held_one_after_another
     assert t["side"].tolist() == [1, -1] and t["entry_time"].iloc[1] == p.index[601]
 
 
+def test_the_records_trades_make_together_what_its_windows_made():
+    from strategy_lab import metrics, walkforward
+    from strategy_lab.engine import backtest as bt
+    p = make_panel(ids=("td:AAA", "td:BBB"), n=600, seed=36)
+
+    def held(spans):
+        t = pd.DataFrame(0.0, index=p.index, columns=p.ids)
+        for inst, a, b, w in spans:
+            t.iloc[a:b, p.ids.index(inst)] = w
+        return t
+    runs = {0: bt.run(p, held([("td:AAA", 10, 500, 0.5), ("td:BBB", 100, 300, -0.3)])),
+            1: bt.run(p, held([("td:AAA", 50, 550, 0.4), ("td:BBB", 200, 450, 0.2), ("td:BBB", 460, 520, -0.2)]))}
+    daily = pd.DataFrame({c: metrics.daily_returns(r.returns) for c, r in runs.items()}).fillna(0.0)
+    day = lambda k: (p.index[k] - pd.Timedelta(microseconds=1)).normalize()      # noqa: E731
+    edges = [day(0), day(200), day(400), day(len(p.index) - 1) + pd.Timedelta(days=1)]
+    folds = [walkforward.Fold(edges[0], e, e, f) for e, f in zip(edges[:-1], edges[1:])]
+    choices = [0, 1, 0]                                                          # switched twice
+    oos = ev._stitched(p, runs, daily, folds, choices)
+    rows = [{"test_start": f.test_start.date(), "test_end": f.test_end.date()} for f in folds]
+    got = ev._oos_held(p, runs, rows, choices, oos.index)
+    # the pieces on the record's own path make the stitched record, switch costs included
+    assert np.prod(1 + got.parts.net) == pytest.approx(np.prod(1 + oos.to_numpy()), rel=1e-12)
+    t = got.trades
+    before = np.r_[1.0, np.cumprod(1 + got.parts.net)[:-1]]
+    start = p.index.get_indexer(t["entry_time"])
+    made = t["net_return"] * t["size"] * before[start] * got.parts.opened[start]
+    assert made.sum() == pytest.approx(np.prod(1 + oos.to_numpy()) - 1, rel=1e-12)
+    # BBB short in the first window, closed by the switch; long in the second, closed by the next one
+    assert t.loc[t["instrument"] == "td:BBB", "side"].tolist()[:2] == [-1, 1]
+
+
 def test_a_fixed_list_scored_from_its_half_is_held_as_a_fixed_list(monkeypatch):
     from strategy_lab.engine.hold import bought_on, buy_and_hold
     p = make_panel(ids=("td:AAA", "td:BBB", "td:CCC", "td:DDD"), n=900, seed=9)

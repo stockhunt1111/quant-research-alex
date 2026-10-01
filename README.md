@@ -227,7 +227,8 @@ Other data commands:
   up (user, 2026-09-27: strange that 22 strategies traded long only).
 * `@panel` — the function gets the whole universe (`p.close` etc. are wide frames) and returns weights with
   sum |w| <= 1. Add a `live` argument to receive the universe membership mask. The weights are a book rebalanced
-  whole (every position traded back to its weight when any weight moves: an allocation decided once a month or week),
+  whole (every position traded back to its weight at each of its decisions: an allocation decided once a month or
+  week; between them a name that leaves the list is sold alone),
   or with `@panel(book=False)` positions of their own, each traded only when its own weight moves (`big_move_follow`'s
   events: rebalanced whole, a book of events sold its running moves down at every new one, 22-47% of the bars it held
   anything on 1d lists, 2.7% a year on crypto Top-50 at the median; an event takes a free seat on its first bar, the
@@ -485,12 +486,20 @@ and without it, and writes reports/peer_check.md.
   the target figures.
 * **Makes money** means a positive Sharpe AND a positive compounded return: a positive Sharpe can still lose money
   once large swings compound, and such a result is rejected with that reason.
-* **Trades** (`engine.trades`) — a trade's net return is its price move less its two fills' costs and what holding it
-  paid and was paid (a perp's funding, a short's borrow, the dividends of the ex-dates it was held into), per unit of
-  the money it was entered with; `size` is the share of the equity it was entered with. The win rate, average win and
-  loss are the trades' own; the profit factor weighs each trade by its size, what it made for the account (until
-  2026-09-29 the carry was left out, a long perp held through 2021's funding showing it as profit, and a trade a model
-  sized to a tenth weighed as much as a full one).
+* **Trades** (`engine.trades`) — a trade's net return is what the account made from it over the money it was entered
+  with: the price moves of the units it held between each of its fills (its entry, the resizes a book's rebalance or
+  a change of its share of the list made, its exit), less those fills' costs and what holding it paid and was paid (a
+  perp's funding, a short's borrow, the dividends of the ex-dates it was held into), each as the engine's walk charged
+  it (`backtest.Parts`: the trades of a record make together what the record made); its gross return is its price move
+  from its entry fill to its exit fill; `size` is the share of the equity it was entered with. A trade held at one
+  size nets its price move less its two fills' costs and its carry; one a book traded back to its weight each week
+  does not (a winner is sold down at every rebalance, a loser bought up). Until 2026-10-01 every trade was measured as
+  if its units never changed after its entry: on `xs_momentum` on crypto Top-50 1d (frac 0.1, a month, weekly) the long
+  of MYX through its squeeze of 2025-09 read +1423% net, +178% of the account, where it made the account +102.5%
+  (+820% of the money it entered with), and the trades' profit factor read 1.43 where they made 1.34. The win rate,
+  average win and loss are the trades' own; the profit factor weighs each trade by its size, what it made for the
+  account (until 2026-09-29 the carry was left out, a long perp held through 2021's funding showing it as profit, and
+  a trade a model sized to a tenth weighed as much as a full one).
 * **Beyond luck** — every evaluation saved is a try the best results were picked from: `P(beyond luck)` is the
   probability that a record's Sharpe is above what the best of that many worthless tries would show over a record of
   the same length (`significance.deflated`: Bailey & Lopez de Prado's deflated Sharpe, with its skew and kurtosis;
@@ -602,8 +611,13 @@ and without it, and writes reports/peer_check.md.
   `fill="next_close"` is one bar more conservative.
 * A position is the units its fill bought, held until its target moves, as an account holds it (the firm's simulator
   and products, and buy-and-hold here): a rule's positions each traded only when their own target moves (entry, exit,
-  a resize of its share of the list), a panel strategy's book rebalanced whole when any weight moves (its monthly or
-  weekly rebalance); between, a weight drifts with its price. Until 2026-09-27 every weight was traded back to its
+  a resize of its share of the list), a panel strategy's book rebalanced whole at each of its decisions (its monthly
+  or weekly rebalance), a name that leaves its list between them sold alone at the re-pick (until 2026-10-01 the whole
+  book was traded back to its weights there: `xs_momentum` on crypto Top-50 1d, frac 0.1, a month, weekly, made 4.29%
+  a month that way and 4.35% selling the leaver alone, and the walk-forward then chose frac 0.2 in the window holding
+  2025-09's squeeze of MYX, by a training Sharpe 0.8% higher, its record 3.46% a month where it had read 4.06%; rules
+  and books whose decisions fall on their list's re-picks came out the same to the last bit); between, a weight drifts
+  with its price. Until 2026-09-27 every weight was traded back to its
   target on every bar, selling a trend's winners down each bar (SMA 20/200 on crypto Top-10 1d: 6.1% a year where
   held units make 10.2%, on stocks Top-10 1d 10.2% against 11.5%; IBS's short trades within 0.5% either way) and
   rebalancing every bar a book meant to be rebalanced monthly. A book is also brought back to its weights at each of
@@ -690,7 +704,8 @@ and without it, and writes reports/peer_check.md.
   are as many seats as the list has names, so a seat's capital does not change (`strategy.seats`). An instrument that
   stopped trading is out of any list, a fixed one too: its seat and its share go to the others (a rule's position held
   after its last bar had kept its seat for ever: 24 dead seats on the stock Top-100, 1d). A panel strategy's exits are
-  its own rebalances: it drops a name that leaves there (trade ledger: `left_list`). On the stock Top-100 with the
+  its own rebalances, and a name that leaves its list between them, sold alone at the re-pick, the rest of the book
+  left until its next decision (trade ledger: `left_list`). On the stock Top-100 with the
   buffer, 2% of a trend rule's trades run on after their name has left the list; without the buffer and seats a third of
   them were cut by the list. A rule that holds an exposure rather than trades (`@rule(exposure=True)`: always held, only
   resized; `vol_managed`) follows the list as a panel strategy does: kept to the end of its trade, a leaver would hold

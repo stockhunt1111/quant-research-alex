@@ -9,12 +9,16 @@ Conventions (all returns are fractions of equity):
     fill="next_close" executes at the close of bar t+1 instead (one bar more conservative).
   * A position is the units its fill bought, held until its target moves: then it is bought or sold to its target, a
     fraction of the equity at that moment. A rule's positions are independent, each traded only when its own target
-    moves (its entry, its exit, a resize of its share); a panel strategy's book is rebalanced whole, every position
-    traded back to its weight when any of them moves (`run(book=True)`). Between, a weight drifts with its price
+    moves (its entry, its exit, a resize of its share); a panel strategy's book is rebalanced whole at each of its
+    decisions (`run(book=True, decided=)`), every position traded back to its weight, and between them a weight that
+    moves (a name that left its list, a market delisted) is traded alone, the other positions held as they are; a book
+    without decisions is rebalanced whole whenever any of its weights moves. Between, a weight drifts with its price
     against the book's, as an account holds it (the firm's simulator and products; buy-and-hold here), and turnover
     counts the fills only. Until 2026-09-27 every weight was traded back to its target on every bar: a winner of a
     trend was sold down each bar (crypto Top-10 1d, SMA 20/200: 6.1% a year where holding the units makes 10.2%),
-    and a book "rebalanced monthly" was in fact rebalanced every bar.
+    and a book "rebalanced monthly" was in fact rebalanced every bar; until 2026-10-01 a name that left its list
+    between a book's decisions had the whole book traded back to its weights there (xs_momentum on crypto Top-50 1d,
+    weekly: 4.29% a month that way, 4.35% selling the leaver alone).
   * No fill takes the positions held past MAX_GROSS of the equity. Positions held as units grow past their shares,
     so a trade entered at its share of the equity can need more money than the account has free (two seats of half:
     one bought and doubled holds two thirds, and half of the equity bought for the other would borrow a sixth). What
@@ -153,6 +157,26 @@ class ExitFills:
         return out
 
 
+@dataclass(frozen=True)
+class Parts:
+    """What each position made the account on each bar, in the walk's own arithmetic (`_held_returns`), so that a
+    trade's result is what the account made from it, every resize included: a book traded back to its weights each
+    week sells a winner down and buys a loser up, which the trade's entry and exit prices alone do not show. A bar's
+    part of an instrument comes in two pieces, over the equity at the close before the bar: `held_in`, the position
+    held into the bar (its gap, the dividend paid to it, the cost of closing it at the open or of its liquidation in
+    the gap), and `held_on`, the position held from the bar's open (the cost of the fill that opened or resized it,
+    its session to the close or to an intrabar exit and that exit's cost, its funding, borrow and a dividend paid
+    after the fill): a flip at the open closes one trade and opens another on the same bar. The instruments' pieces of
+    a bar add up to its net return. Only the bars where an instrument made or paid something are listed (`bar`,
+    `inst`: the panel's positions), in the order of bars."""
+    bar: np.ndarray             # int64
+    inst: np.ndarray            # int64
+    held_in: np.ndarray         # float64
+    held_on: np.ndarray         # float64
+    net: np.ndarray             # (bars,) each bar's net return: the equity's path the pieces are measured on
+    opened: np.ndarray          # (bars,) the equity after each bar's fills over the equity at the close before it
+
+
 @dataclass
 class Result:
     returns: pd.Series          # net return per bar
@@ -167,6 +191,8 @@ class Result:
     unfunded: pd.Series         # exposure a bar's fills asked for beyond the capital free (not bought), per bar
     liquidated: pd.DataFrame    # per bar and instrument: a short liquidated (its `exits` price is where; a gap's: the
                                 # bar before, the last it was held through)
+    parts: Parts | None         # what each position made on each bar, the trade ledger's (`engine.trades`): None for
+                                # a run made without them (`run(parts=False)`), whose record is all that is read
 
 
 def ended(panel: Panel) -> pd.DataFrame:
@@ -760,14 +786,18 @@ def _exits_walk(target, o, h, l, atr, stop, take, trail, stop_atr, take_atr, tra
 
 
 def run(panel: Panel, target: pd.DataFrame, *, fill: str = "next_open", exits: Exits | None = None,
-        book: bool = False, exit_fills: ExitFills | None = None, decided: np.ndarray | None = None) -> Result:
+        book: bool = False, exit_fills: ExitFills | None = None, decided: np.ndarray | None = None,
+        parts: bool = True) -> Result:
     """The record of holding `target` (see the module's conventions). `book`: the target is a book rebalanced whole
-    (a panel strategy's weights: when any of them moves, every position is traded back to its weight), not
-    independent positions each traded only when its own weight moves (a rule's). `decided`: the bars at whose close
-    a book was decided (`Strategy.decisions`): it is traded back to its weights at the fill after each, whether or not
-    they moved (a monthly allocation that picks the same names again is rebalanced to them). `exit_fills`: where the
+    (a panel strategy's weights: every position traded back to its weight), not independent positions each traded
+    only when its own weight moves (a rule's). `decided`: the bars at whose close a book was decided
+    (`Strategy.decisions`): it is traded back to its weights at the fill after each, whether or not they moved (a
+    monthly allocation that picks the same names again is rebalanced to them), and between them a weight that moves is
+    traded alone; a book without them is rebalanced whole whenever any of its weights moves. `exit_fills`: where the
     target's trades were already closed by their exits (a rule's, `exited`: the target is cut there): the positions are
-    closed at those prices, and `exits` is not walked again."""
+    closed at those prices, and `exits` is not walked again. `parts` off leaves out what each position made on each bar
+    (`Parts`, a trade ledger's), for a run whose record alone is read: listing them makes a walk about half as long
+    again (crypto Top-100 1h: xs_momentum 0.22 s to 0.33, sma_cross 0.32 s to 0.55)."""
     if fill not in ("next_open", "next_close"):
         raise ValueError(f"fill must be 'next_open' or 'next_close', got {fill!r}")
     exits = exits or Exits()
@@ -779,7 +809,8 @@ def run(panel: Panel, target: pd.DataFrame, *, fill: str = "next_open", exits: E
     n, m = T.shape
     lag = 1 if fill == "next_open" else 2               # the bar a decision's fill is held from
     refill = np.zeros(n, dtype=np.bool_)                # a book decided again: brought back to its weights there
-    if book and decided is not None:
+    decisions = book and decided is not None            # ... and between its decisions a weight that moves trades alone
+    if decisions:
         refill[lag:] = np.asarray(decided, dtype=np.bool_)[:n - lag]
 
     if fill == "next_close":
@@ -797,7 +828,8 @@ def run(panel: Panel, target: pd.DataFrame, *, fill: str = "next_open", exits: E
             W, none.copy(), none, none, np.zeros((m, n)).T, cc, *_funding_args(terms.funding),
             *_exit_moments(np.zeros(0, np.int64), np.zeros(0, np.int64), np.zeros(0, np.int64), m),
             panel.index.asi8, terms.dividends.to_numpy(), rates.flat, rates.column, at_fill, at_fill,
-            terms.borrow_rate, terms.dt_years, filled_on, book, refill, True, MAX_GROSS))
+            terms.borrow_rate, terms.dt_years, filled_on, book, refill, decisions, True, MAX_GROSS,
+            0 if parts else None), parts)
 
     if exit_fills is not None:
         w_session = _filled(T, tradable, stopped)
@@ -819,7 +851,8 @@ def run(panel: Panel, target: pd.DataFrame, *, fill: str = "next_open", exits: E
         w_session, exit_px, panel.open.to_numpy(), panel.high.to_numpy(), terms.gap.to_numpy(), terms.intra.to_numpy(),
         *_funding_args(terms.funding), *_exit_moments(rows, cols, moments, m), panel.index.asi8,
         terms.dividends.to_numpy(), rates.flat, rates.column, rates.at_open, rates.during, terms.borrow_rate,
-        terms.dt_years, tradable, book, refill, False, MAX_GROSS))
+        terms.dt_years, tradable, book, refill, decisions, False, MAX_GROSS, 0 if parts else None),
+        parts)
 
 
 def _funding_args(f: _Funding) -> tuple:
@@ -835,17 +868,19 @@ def _exit_moments(rows: np.ndarray, cols: np.ndarray, moments: np.ndarray, m: in
     return end - counts, end, rows[order].astype(np.int64), moments[order].astype(np.int64)
 
 
-def _result(panel: Panel, fill: str, exit_px: np.ndarray, walked: tuple) -> Result:
+def _result(panel: Panel, fill: str, exit_px: np.ndarray, walked: tuple, record: bool) -> Result:
     """The `Result` of `_held_returns`' walk: an exit price only where a position was held (a trade bought nothing
-    for want of free capital closes nothing)."""
-    net, gross, cost, carry, turnover, held, exposure, unfunded, liquidated = walked
+    for want of free capital closes nothing); what each position made on each bar where the walk `record`ed it."""
+    (net, gross, cost, carry, turnover, held, exposure, unfunded, liquidated, opened, cell_bar, cell_inst, held_in,
+     held_on) = walked
     idx = panel.index
     mk = lambda a: pd.Series(a, index=idx)                        # noqa: E731
     exit_px[held == 0.0] = np.nan
     return Result(returns=mk(net), gross=mk(gross), cost=mk(cost), carry=mk(carry), turnover=mk(turnover),
                   weights=pd.DataFrame(held, index=idx, columns=panel.ids),
                   exits=pd.DataFrame(exit_px, index=idx, columns=panel.ids), fill=fill, exposure=mk(exposure),
-                  unfunded=mk(unfunded), liquidated=pd.DataFrame(liquidated, index=idx, columns=panel.ids))
+                  unfunded=mk(unfunded), liquidated=pd.DataFrame(liquidated, index=idx, columns=panel.ids),
+                  parts=Parts(cell_bar, cell_inst, held_in, held_on, net, opened) if record else None)
 
 
 @njit(cache=True)
@@ -981,30 +1016,51 @@ def _funding_paid(t, j, closed, liquidated_now, grow, at_close, f_next, f_end, f
 @njit(cache=True, error_model="numpy")
 def _held_returns(w, exit_px, opn, high, gap, intra, fund_at_close, fund_start, fund_end, fund_bar, fund_moment,
                   fund_ratio, exit_start, exit_end, exit_bar, exit_moment, closes_ns, dividends, flat_rate, rate_column,
-                  fill_rate, exit_rate, borrow_rate, dt_years, tradable, book, refill, paid_after_fill, max_gross):
+                  fill_rate, exit_rate, borrow_rate, dt_years, tradable, book, refill, decisions, paid_after_fill,
+                  max_gross, record):
     """Each bar's net return, gross return, cost, carry and turnover of an account that holds units, the weight each
-    position was last filled to, the exposure held through each bar and the exposure its fills could not buy: a
-    position is bought or resized to its fill `w` (a fraction of the equity at that moment) and then held, its weight
-    drifting with its price against the book's, until its fill moves again: a rule's own fill (`book` off: an entry,
-    an exit, a resize of its share), or any fill of a book rebalanced whole (`book` on: a panel strategy's rebalance,
-    each instrument traded to its weight where it trades that bar; `refill`: the bars a book decided again is traded
-    back to its weights on though none of them moved). No fill takes the positions held past `max_gross`
-    of the equity: the exposure a bar's fills add beyond what the positions they trade already hold is cut, pro rata,
-    to the capital the others leave free (`_funded`), as a cash account buys. `exit_px`: where an intrabar exit closed
-    a position; the walk writes a short's liquidation into it (at LIQUIDATION times the short's average entry, where
-    the bar's `high` reaches it, or on the bar before when its open is past it) and marks it in `liquidated`. A fill
-    pays `fill_rate` of what it trades and an intrabar exit or liquidation `exit_rate` (a gap's liquidation the bar
-    before's, where its exit is), on its bar, for an instrument with a column of its own there (`rate_column`:
-    `engine.costs.Rates`), and `flat_rate` otherwise. A bar is its gap from the close before, on the weights held at
-    that close, its fills at the open, then its session. A dividend goes to the weight held at the close before the
-    ex-date's first bar; `paid_after_fill` gives it to the weight after the fill instead (fills at the close before,
-    next_close's). Funding (`fund_*`: `_Funding`) is paid by each position at the settlements it held at, on its value
-    then (`_funding_paid`; `exit_*`: the intrabar exits' moments, `_exit_moments`; `closes_ns`: the bars' close
+    position was last filled to, the exposure held through each bar and the exposure its fills could not buy, the equity
+    after each bar's fills over the close before's, and what each position made on each bar (`Parts`: its bars,
+    instruments and two pieces; none without `record`): a position is bought or resized to its fill `w` (a fraction of
+    the equity at that moment) and then held, its weight drifting with its price against the book's, until its fill
+    moves again: a rule's own fill (`book` off: an entry, an exit, a resize of its share), or a book's rebalance (`book`
+    on: each instrument traded to its weight where it trades that bar), at each of its decisions (`refill`: the bars a
+    book decided again is traded back to its weights on, whether or not they moved) or, for a book without decisions,
+    whenever any of its weights moves; between a book's decisions (`decisions`) a weight that moves (a name that left
+    its list, a market delisted) is traded alone, as a rule's, the other positions held as they are. No fill takes the
+    positions held past `max_gross` of the equity: the exposure a bar's fills add beyond what the positions they trade
+    already hold is cut, pro rata, to the capital the others leave free (`_funded`), as a cash account buys. `exit_px`:
+    where an intrabar exit closed a position; the walk writes a short's liquidation into it (at LIQUIDATION times the
+    short's average entry, where the bar's `high` reaches it, or on the bar before when its open is past it) and marks
+    it in `liquidated`. A fill pays `fill_rate` of what it trades and an intrabar exit or liquidation `exit_rate` (a
+    gap's liquidation the bar before's, where its exit is), on its bar, for an instrument with a column of its own there
+    (`rate_column`: `engine.costs.Rates`), and `flat_rate` otherwise. A bar is its gap from the close before, on the
+    weights held at that close, its fills at the open, then its session. A dividend goes to the weight held at the close
+    before the ex-date's first bar; `paid_after_fill` gives it to the weight after the fill instead (fills at the close
+    before, next_close's). Funding (`fund_*`: `_Funding`) is paid by each position at the settlements it held at, on its
+    value then (`_funding_paid`; `exit_*`: the intrabar exits' moments, `_exit_moments`; `closes_ns`: the bars' close
     times), and it and a short's borrow come out of the equity after the bar's fills, where the positions are measured.
     Only the instruments taking part in the book on a bar are walked (`_involved`), bar by bar: a position's weight
-    depends on the whole book's return."""
+    depends on the whole book's return. `record`: None lists no pieces, an integer lists them; numba compiles a walk for
+    each (its branches on None are pruned), where a flag read at every instrument and bar had cost a walk that lists
+    nothing 15-25% of its time."""
     n, m = w.shape
     start, end, inst, moved = _involved(w)
+    # what each position made on each bar (`Parts`), listed as the bars go; the runs of `_involved` bound how many there
+    # are but for a position that rides past its run (a sale due on a bar it does not trade), so the lists grow
+    room = 0 if record is None else max(64, int(1.25 * np.sum(end - start + 1)))
+    cell_bar = np.empty(room, dtype=np.int64)
+    cell_inst = np.empty(room, dtype=np.int64)
+    held_in = np.empty(room)
+    held_on = np.empty(room)
+    cells = 0
+    part_gap = np.zeros(m)                        # this bar, by instrument: the gap of the position held into it,
+    part_paid = np.zeros(m)                       # ... the dividend paid to it at the close before,
+    cost_in = np.zeros(m)                         # ... the costs of closing it (a close or a flip at the open, a
+    cost_on = np.zeros(m)                         # liquidation in the gap) and of the position held from the open,
+    part_held = np.zeros(m)                       # ... and that position's session less its funding and borrow,
+    part_paid_on = np.zeros(m)                    # its dividend paid after the fill (next_close's)
+    opened_bar = np.empty(n)
     active = np.empty(m, dtype=np.int64)          # the instruments walked this bar, in no order
     where = np.full(m, -1, dtype=np.int64)
     n_active = 0
@@ -1045,6 +1101,9 @@ def _held_returns(w, exit_px, opn, high, gap, intra, fund_at_close, fund_start, 
             j = active[a]
             gap_move[j] = gap[t, j]
             sold_in_gap[j] = 0.0
+            if record is not None:
+                part_gap[j] = 0.0
+                part_paid[j] = 0.0
             if w_close[j] != 0.0:
                 if w_close[j] < 0.0 and entry[j] > 0.0 and opn[t, j] >= LIQUIDATION * entry[j]:
                     # the gap passed the short's liquidation price: it was closed there, not at the open
@@ -1058,10 +1117,13 @@ def _held_returns(w, exit_px, opn, high, gap, intra, fund_at_close, fund_start, 
                 gap_sum += w_close[j] * gap_move[j]
                 if not paid_after_fill:
                     paid += w_close[j] * dividends[t, j]
+                if record is not None:
+                    part_gap[j] = w_close[j] * gap_move[j]
+                    part_paid[j] = 0.0 if paid_after_fill else w_close[j] * dividends[t, j]
         den = 1.0 + gap_sum
         if den == 0.0:
             den = 1.0
-        rebalance = book and (moved[t] or refill[t])
+        rebalance = book and (refill[t] or (moved[t] and not decisions))
         # the fills of the bar, and what they add to the exposure the positions keep: more than the capital left free
         # is not bought
         kept = 0.0
@@ -1075,7 +1137,10 @@ def _held_returns(w, exit_px, opn, high, gap, intra, fund_at_close, fund_start, 
             before = w[t - 1, j] if t > 0 else 0.0
             if out[j] and (rebalance if book else w[t, j] >= 0.0):
                 out[j] = False                           # a new decision: a book's rebalance, a rule's target turning
-            filled = ((rebalance and tradable[t, j]) if book else w[t, j] != before) and not out[j]
+            if book and rebalance:
+                filled = tradable[t, j] and not out[j]
+            else:                                        # a rule's own fill, or a weight a book moved between decisions
+                filled = (not book or decisions) and w[t, j] != before and not out[j]
             w_open[j] = pre
             fills[j] = filled
             if not filled:
@@ -1133,27 +1198,60 @@ def _held_returns(w, exit_px, opn, high, gap, intra, fund_at_close, fund_start, 
                     c += sold_in_gap[j] * exit_rate[t - 1, k_rate]
             else:
                 c += (filled + closed + sold_in_gap[j]) * flat_rate[j]
+            if record is not None:
+                if k_rate >= 0:
+                    r_fill, r_exit = fill_rate[t, k_rate], exit_rate[t, k_rate]
+                    r_gap = exit_rate[t - 1, k_rate] if sold_in_gap[j] != 0.0 else 0.0
+                else:
+                    r_fill = r_exit = r_gap = flat_rate[j]
+                # a fill that closes the position held into the bar (to nothing, or to the other side) is that
+                # position's cost; what it opens or resizes, and an exit inside the bar, the position's from the open
+                if pre != 0.0 and (x == 0.0 or (x > 0.0) != (pre > 0.0)):
+                    cost_in[j] = abs(pre) * r_fill + sold_in_gap[j] * r_gap
+                    cost_on[j] = (filled - abs(pre)) * r_fill + closed * r_exit
+                else:
+                    cost_in[j] = sold_in_gap[j] * r_gap
+                    cost_on[j] = filled * r_fill + closed * r_exit
+                part_held[j] = 0.0
+                part_paid_on[j] = 0.0
             turn += filled + closed + sold_in_gap[j]
             x_now[j] = x
             if x != 0.0:
                 held_now += abs(x)
-                session += x * _session_return(exit_px[t, j], opn[t, j], intra[t, j])
+                moved_x = x * _session_return(exit_px[t, j], opn[t, j], intra[t, j])
+                session += moved_x
                 grow = 1.0 + intra[t, j] if np.isfinite(intra[t, j]) else 1.0
-                fund += x * _funding_paid(t, j, not np.isnan(exit_px[t, j]), liquidated[t, j], grow, fund_at_close,
-                                          f_next, fund_end, fund_bar, fund_moment, fund_ratio, e_next, exit_end,
-                                          exit_bar, exit_moment, closes_ns)
+                paid_x = x * _funding_paid(t, j, not np.isnan(exit_px[t, j]), liquidated[t, j], grow, fund_at_close,
+                                           f_next, fund_end, fund_bar, fund_moment, fund_ratio, e_next, exit_end,
+                                           exit_bar, exit_moment, closes_ns)
+                fund += paid_x
                 borrow += max(-x, 0.0) * borrow_rate[j]
                 if paid_after_fill:
                     paid_on_fills += x * dividends[t, j]
+                if record is not None:
+                    part_held[j] = moved_x - paid_x - max(-x, 0.0) * borrow_rate[j] * dt_years[t]
+                    part_paid_on[j] = x * dividends[t, j] if paid_after_fill else 0.0
         exposure[t] = held_now
         opened = (1.0 + gap_sum) * (1.0 - c)       # the equity after the bar's fills, over the last close's
         paid += paid_on_fills * opened
         # the equity at the close over the equity after the fills: the positions' session, less the funding and borrow
         # paid, plus the dividends received; they are cash, and change no position's units
         grew = 1.0 + session - fund - borrow * dt_years[t] + (paid / opened if opened != 0.0 else 0.0)
+        opened_bar[t] = opened
         a = 0
         while a < n_active:
             j = active[a]
+            if record is not None:          # its pieces of the bar, over the equity at the close before: net[t]'s
+                piece_in = part_gap[j] + part_paid[j] - cost_in[j] * (1.0 + gap_sum)
+                piece_on = opened * (part_held[j] + part_paid_on[j]) - cost_on[j] * (1.0 + gap_sum)
+                if piece_in != 0.0 or piece_on != 0.0:
+                    if cells == len(cell_bar):
+                        cell_bar = _longer(cell_bar)
+                        cell_inst = _longer(cell_inst)
+                        held_in = _longer(held_in)
+                        held_on = _longer(held_on)
+                    cell_bar[cells], cell_inst[cells], held_in[cells], held_on[cells] = t, j, piece_in, piece_on
+                    cells += 1
             x = x_now[j]
             w_close[j] = _close_weight(x, exit_px[t, j], opn[t, j], intra[t, j], grew) if x != 0.0 else 0.0
             if t >= ends_at[j] and w_close[j] == 0.0:        # out of the book: walked again from its next run
@@ -1170,4 +1268,13 @@ def _held_returns(w, exit_px, opn, high, gap, intra, fund_at_close, fund_start, 
         net[t] = (1.0 + gap_sum) * (1.0 - c) * (1.0 + session) - 1.0 - carry[t]
         cost[t] = c
         turnover[t] = turn
-    return net, gross, cost, carry, turnover, held, exposure, unfunded, liquidated
+    return (net, gross, cost, carry, turnover, held, exposure, unfunded, liquidated, opened_bar,
+            cell_bar[:cells].copy(), cell_inst[:cells].copy(), held_in[:cells].copy(), held_on[:cells].copy())
+
+
+@njit(cache=True)
+def _longer(a):
+    """`a` in an array twice its length, its values first."""
+    out = np.empty(2 * len(a), dtype=a.dtype)
+    out[:len(a)] = a
+    return out

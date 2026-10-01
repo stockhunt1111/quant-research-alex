@@ -118,7 +118,9 @@ def test_a_trade_nets_the_spreads_at_its_entrys_and_its_exits_opens():
     T.iloc[10:20] = 0.5                                       # decided at bar 10's close: in at 11's open, out at 21's
     t = ledger(p, bt.run(p, T, fill="next_open")).iloc[0]
     o = p.open["td:XPT/USD"]
-    paid = 0.5 * opening[24 * 11] / o.iloc[11] + 0.5 * opening[24 * 21] / o.iloc[21]
+    at_in, at_out = 0.5 * opening[24 * 11] / o.iloc[11], 0.5 * opening[24 * 21] / o.iloc[21]
+    # per unit of the money it entered with: half the equity bought at its cost, sold at its exit's value
+    paid = at_in / (1 - 0.5 * at_in) + at_out * o.iloc[21] / o.iloc[11]
     assert t["net_return"] == pytest.approx(t["gross_return"] - paid, abs=1e-15)
 
 

@@ -76,17 +76,17 @@ class Evaluation:
 
 
 def _run(strategy: Strategy, panel: Panel, cfg: dict, member, fill: str, memo: dict | None = None,
-         delay: int = 0, signals: dict | None = None) -> bt.Result:
+         delay: int = 0, signals: dict | None = None, parts: bool = True) -> bt.Result:
     """`delay` = k decides every position k bars later than the strategy does: its entries and its rule's own exits k
     bars later, and a stop or target walked from the fill the delayed order gets (it rests in the market from there,
-    not from the rule's decision)."""
+    not from the rule's decision). `parts` off: a run whose record alone is read, no trades (`backtest.run`)."""
     target, fills = strategy.target_and_exits(panel, cfg, member, memo, signals)
     decided = strategy.decisions(panel, cfg)
     if delay:
         target, fills = target.shift(delay).fillna(0.0), None
         decided = None if decided is None else np.r_[np.zeros(delay, dtype=bool), decided[:-delay]]
     return bt.run(panel, target, fill=fill, exits=strategy.exits(cfg), book=strategy.rebalanced_whole,
-                  exit_fills=fills, decided=decided)
+                  exit_fills=fills, decided=decided, parts=parts)
 
 
 def _switch_cost(panel: Panel, a: bt.Result | None, b: bt.Result | None, when: pd.Timestamp) -> float:
@@ -94,14 +94,19 @@ def _switch_cost(panel: Panel, a: bt.Result | None, b: bt.Result | None, when: p
     a window no configuration could be chosen for), paid where that bar's fills are: at its open, or at the close
     before it for next_close fills. The positions are those held into that bar, each configuration's last fills
     before it: what b fills on the bar itself is in b's own returns, and a's fills there never happen."""
+    return float(_switch_costs(panel, a, b, when).sum())
+
+
+def _switch_costs(panel: Panel, a: bt.Result | None, b: bt.Result | None, when: pd.Timestamp) -> np.ndarray:
+    """`_switch_cost` by instrument."""
     k = panel.index.searchsorted(when)
     if k >= len(panel.index) or (a is None and b is None):
-        return 0.0
+        return np.zeros(len(panel.ids))
     rates = costs.rates(panel)
     rate = rates.row(k, "at_open") if (a or b).fill == "next_open" else rates.row(max(k - 1, 0), "at_close")
     held = lambda r: (np.zeros(len(panel.ids)) if r is None or k == 0          # noqa: E731
                       else r.weights.iloc[k - 1].to_numpy())
-    return float((np.abs(held(a) - held(b)) * rate).sum())
+    return np.abs(held(a) - held(b)) * rate
 
 
 def first_held_day(member: pd.DataFrame | None) -> pd.Timestamp | None:
@@ -122,7 +127,7 @@ def half_held_from(panel: Panel, member: pd.DataFrame | None, size: int) -> pd.T
 
 
 def _walk_forward(strategy, panel, member, fill, configs, timeframe, delay: int = 0, keep_all: bool = True,
-                  memo: dict | None = None, signals: dict | None = None):
+                  memo: dict | None = None, signals: dict | None = None, parts: bool = True):
     """Every configuration run over the whole panel, one of them chosen for each window on the windows before it.
 
     Returns {configuration: its backtest}, the daily returns of every configuration, the windows' rows, the choices,
@@ -130,13 +135,14 @@ def _walk_forward(strategy, panel, member, fill, configs, timeframe, delay: int 
     the configurations chosen and of the best in-sample one are returned, run again once the choice is made: a list's
     backtest holds a weight and an exit price per bar and instrument, and a whole grid's took gigabytes. `memo` (the
     positions of each configuration on this membership) is filled for the caller's own runs of the same
-    configurations; `signals`: see `Strategy.target`."""
+    configurations; `signals`: see `Strategy.target`. `parts` off: the backtests returned carry no trades (a list whose
+    record alone is read: a neighbouring list's), and a grid's first pass carries none unless it keeps them all."""
     memo = {} if memo is None else memo
     fill_signals(strategy, panel, configs, signals)
     kept: dict[int, bt.Result] = {}
     daily = {}
     for ci, cfg in enumerate(configs):
-        r = _run(strategy, panel, cfg, member, fill, memo, delay, signals)
+        r = _run(strategy, panel, cfg, member, fill, memo, delay, signals, parts and (keep_all or len(configs) == 1))
         daily[ci] = metrics.daily_returns(r.returns)
         if keep_all or len(configs) == 1:
             kept[ci] = r
@@ -151,7 +157,8 @@ def _walk_forward(strategy, panel, member, fill, configs, timeframe, delay: int 
     def runs_of(needed) -> dict[int, bt.Result]:
         if keep_all:
             return kept
-        return {c: kept[c] if c in kept else _run(strategy, panel, configs[c], member, fill, memo, delay, signals)
+        return {c: kept[c] if c in kept else _run(strategy, panel, configs[c], member, fill, memo, delay, signals,
+                                                  parts)
                 for c in sorted({c for c in needed if c is not None})}
 
     if len(configs) == 1:
@@ -198,10 +205,11 @@ def _stitched(panel: Panel, runs: dict[int, bt.Result], daily: pd.DataFrame, fl:
 @dataclass
 class Held:
     """What the out-of-sample record held: its trades, each position's weight at its last fill on the record's bars,
-    and the exposure held through each of them."""
+    the exposure held through each of them, and what each position made on each bar (on the record's own path)."""
     trades: pd.DataFrame
     weights: pd.DataFrame
     exposure: pd.Series
+    parts: bt.Parts
 
 
 def _oos_held(panel: Panel, runs: dict[int, bt.Result], fold_rows: list[dict], choices: list[int | None],
@@ -210,23 +218,34 @@ def _oos_held(panel: Panel, runs: dict[int, bt.Result], fold_rows: list[dict], c
     after another (none in a window without a choice), and their trades, as one account holds them. A position a
     switch keeps on its side runs on as one trade, one it closes ends at the switch, and a trade is the record's from
     its first bar in it to its last: taken by configuration, a trade entered in one window would count whole to its end
-    and one carried into the next window not at all."""
+    and one carried into the next window not at all. What each trade made is the windows' runs' (`backtest.Parts`),
+    on the record's own path: a switch's cost (`_switch_costs`) is the trades' it closes or opens, and a window's
+    first bar is its run's, the gap of what that run held into it going to what it holds from there."""
     idx = panel.index
     bar_day = (idx - pd.Timedelta(microseconds=1)).normalize()      # a bar's UTC day, as the daily record counts it
     if not fold_rows:
         r = runs[0]
         span = (bar_day >= days.min()) & (bar_day <= days.max())
-        return Held(ledger(panel, r, member), r.weights[span], r.exposure[span])
+        return Held(ledger(panel, r, member), r.weights[span], r.exposure[span], r.parts)
     n, m = len(idx), len(panel.ids)
     weights = np.zeros((m, n)).T
     exit_px = np.full((m, n), np.nan).T
     liquidated = np.zeros((m, n), dtype=bool).T
     exposure = np.zeros(n)
     span = np.zeros(n, dtype=bool)
-    for row, c in zip(fold_rows, choices):
+    net, opened = np.zeros(n), np.ones(n)
+    pieces = []                                                    # (bars, instruments, held into, held from the open)
+    firsts = []                                                    # each window's first bar, with its switch
+    for i, (row, c) in enumerate(zip(fold_rows, choices)):
         lo, hi = pd.Timestamp(row["test_start"], tz="UTC"), pd.Timestamp(row["test_end"], tz="UTC")
         rows = (bar_day >= lo) & (bar_day < hi)
         span |= rows
+        if not rows.any():
+            continue
+        first = int(np.argmax(rows))
+        prev = choices[i - 1] if i else c
+        if prev != c:
+            firsts.append((first, prev, c, lo))
         if c is None:
             continue
         r = runs[c]
@@ -234,11 +253,36 @@ def _oos_held(panel: Panel, runs: dict[int, bt.Result], fold_rows: list[dict], c
         exit_px[rows] = r.exits.to_numpy()[rows]
         liquidated[rows] = r.liquidated.to_numpy()[rows]
         exposure[rows] = r.exposure.to_numpy()[rows]
+        net[rows], opened[rows] = r.parts.net[rows], r.parts.opened[rows]
+        p = r.parts
+        sel = rows[p.bar]
+        bar, held_in, held_on = p.bar[sel], p.held_in[sel].copy(), p.held_on[sel].copy()
+        if i == 0 or prev != c:                                    # what this run held into its window's first bar
+            at = bar == first
+            held_on[at] += held_in[at]
+            held_in[at] = 0.0
+        pieces.append((bar, p.inst[sel], held_in, held_on))
+    for first, prev, c, lo in firsts:
+        paid = _switch_costs(panel, runs.get(prev), runs.get(c), lo)
+        if not paid.any():
+            continue
+        whole = 1.0 + net[first]                                   # the record pays it on its day's growth
+        net[first] = whole * (1.0 - paid.sum()) - 1.0
+        was, now = weights[first - 1] if first else np.zeros(m), weights[first]
+        closes = (was != 0.0) & ((now == 0.0) | (np.sign(was) != np.sign(now)))
+        into = np.where(closes, paid * np.abs(was) / np.maximum(np.abs(was) + np.abs(now), 1e-300), 0.0)
+        cols = np.flatnonzero(paid)
+        pieces.append((np.full(len(cols), first), cols, -whole * into[cols], -whole * (paid - into)[cols]))
+    bar, inst, held_in, held_on = (np.concatenate([q[k] for q in pieces]) if pieces else np.zeros(0)
+                                   for k in range(4))
+    order = np.argsort(bar, kind="stable")
+    parts = bt.Parts(bar[order].astype(np.int64), inst[order].astype(np.int64), held_in[order], held_on[order], net,
+                     opened)
     held = pd.DataFrame(weights, index=idx, columns=panel.ids)
     fill = next(iter(runs.values())).fill                          # every configuration's: the evaluation's
-    trades = trades_of(panel, held, pd.DataFrame(exit_px, index=idx, columns=panel.ids), fill, member,
-                       pd.DataFrame(liquidated, index=idx, columns=panel.ids))
-    return Held(trades, held[span], pd.Series(exposure, index=idx)[span])
+    trades = trades_of(panel, held, pd.DataFrame(exit_px, index=idx, columns=panel.ids), fill, parts, member,
+                       pd.DataFrame(liquidated, index=idx, columns=panel.ids), stitched=True)
+    return Held(trades, held[span], pd.Series(exposure, index=idx)[span], parts)
 
 
 def _log_unfunded(name: str, universe: str, timeframe: str, runs: dict[int, bt.Result], fold_rows: list[dict],

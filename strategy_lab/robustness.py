@@ -255,7 +255,7 @@ def costs(fit: Fit) -> dict:
 
 def delay(fit: Fit) -> dict:
     late = {c: ev._run(fit.strategy, fit.panel, fit.configs[c], fit.member, fit.fill, fit.memo, delay=1,
-                       signals=fit.signals) for c in _chosen(fit)}
+                       signals=fit.signals, parts=False) for c in _chosen(fit)}
     return _figures(_replayed(fit, late))
 
 
@@ -330,8 +330,8 @@ def seeds(fit: Fit) -> dict:
             undo = s.prepare(fit.panel, fit.configs, fit.member) if s.prepare is not None else None
             try:
                 memo: dict = {}                 # the positions kept by configuration do not know the seed
-                runs = {c: ev._run(s, fit.panel, fit.configs[c], fit.member, fit.fill, memo, signals=signals)
-                        for c in _chosen(fit)}
+                runs = {c: ev._run(s, fit.panel, fit.configs[c], fit.member, fit.fill, memo, signals=signals,
+                                   parts=False) for c in _chosen(fit)}
             finally:
                 if undo is not None:
                     undo()
@@ -364,7 +364,7 @@ def vs_rule(fit: Fit) -> dict:
     plain = dataclasses.replace(s, grade=None, grid={k: v for k, v in s.grid.items() if k not in keys})
     memo: dict = {}                             # not the graded rule's: a sizing grade keeps the same keys
     runs = {c: ev._run(plain, fit.panel, {k: v for k, v in fit.configs[c].items() if k not in keys}, fit.member,
-                       fit.fill, memo, signals=fit.signals) for c in _chosen(fit)}
+                       fit.fill, memo, signals=fit.signals, parts=False) for c in _chosen(fit)}
     days = _chosen_days(fit)
     out = paired_t(fit.oos.reindex(days), _replayed(fit, runs).reindex(days))
     if "sharpe_other" in out:
@@ -389,7 +389,7 @@ def neighbour_lists(fit: Fit) -> dict:
         undo = s.prepare(panel, configs, member) if s.prepare is not None else None
         try:
             *_, oos, _ = ev._walk_forward(s, panel, member, fit.fill, configs, fit.timeframe, keep_all=False,
-                                          memo={}, signals=fit.signals)
+                                          memo={}, signals=fit.signals, parts=False)
         finally:
             if undo is not None:
                 undo()

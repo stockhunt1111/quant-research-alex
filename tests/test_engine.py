@@ -19,7 +19,8 @@ def _units_account(fill_px, close, T, book=False, rate=None, refill=None):
     A fill's cost is paid out of every holding pro rata, as the engine's (1 - cost) factor does; no carry. `fill_px[k]`
     is the price a fill before bar k's session takes place at: its open (next_open), or the close before
     (next_close); `rate[k]` what such a fill costs a side, by instrument (RATE when not given); `refill[k]`: a book
-    decided again at the close before bar k, traded back to its weights then whether or not they moved."""
+    decided again at the close before bar k, traded back to its weights then whether or not they moved, and between
+    its decisions trading a target that moves alone."""
     n, m = close.shape
     cash, units, last = 1.0, np.zeros(m), np.zeros(m)
     equity, out = 1.0, np.zeros(n)
@@ -27,7 +28,10 @@ def _units_account(fill_px, close, T, book=False, rate=None, refill=None):
         tgt = T[k - 1]
         at_fill = cash + (units * fill_px[k]).sum()
         held = units * fill_px[k] / at_fill
-        move = np.full(m, (tgt != last).any() or (refill is not None and refill[k])) if book else tgt != last
+        if book and refill is not None:
+            move = np.full(m, bool(refill[k])) | (tgt != last)
+        else:
+            move = np.full(m, (tgt != last).any()) if book else tgt != last
         new = np.where(move, tgt, held)
         sold = np.where(move, np.maximum(held - new, 0.0), 0.0)
         bought = np.where(move, np.maximum(new - held, 0.0), 0.0)
@@ -118,6 +122,27 @@ def test_long_and_short_positions_hold_units_as_an_account_that_pays_its_borrow_
     assert (res.unfunded == 0).all() and not res.liquidated.to_numpy().any()
     ref = _long_short_account(p.open.to_numpy(), p.close.to_numpy(), T.to_numpy(), p.index, book)
     assert np.allclose(res.returns.to_numpy(), ref, rtol=0, atol=1e-13)
+
+
+def test_a_book_between_its_decisions_sells_a_name_that_left_alone_and_holds_the_rest():
+    from strategy_lab.strategy import period_starts
+    p = make_panel(ids=("td:AAA", "td:BBB", "td:CCC"), seed=35, n=200)
+    decided = period_starts(p.index, "M")
+    T = pd.DataFrame(0.3, index=p.index, columns=p.ids)
+    k = 44                                                          # CCC leaves at bar k's close, mid-month
+    assert not decided[k] and not decided[k + 1]
+    T.iloc[k:, 2] = 0.0
+    T.iloc[k + 1:, 2] = 0.3                                         # ... and its list takes it back at the next one
+    res = bt.run(p, T, book=True, decided=decided)
+    refill = np.r_[False, decided[:-1]]
+    ref = _units_account(p.open.to_numpy(), p.close.to_numpy(), T.to_numpy(), True, refill=refill)
+    assert np.allclose(res.returns.to_numpy(), ref, atol=1e-12)
+    # at bar k + 1 only CCC is sold, at k + 2 only CCC bought back (0.3 of the equity): AAA and BBB ride as they are,
+    # where a book traded back to its weights at every move trades them too
+    whole = bt.run(p, T, book=True)
+    assert res.turnover.iloc[k + 2] == pytest.approx(0.3, rel=1e-12)
+    for bar in (k + 1, k + 2):
+        assert 0 < res.turnover.iloc[bar] < whole.turnover.iloc[bar], bar
 
 
 def test_a_held_position_drifts_with_its_price_and_a_book_is_brought_back_to_its_weights():
@@ -213,7 +238,9 @@ def test_a_trades_net_return_is_net_of_the_dividends_and_borrow_it_held_through(
         T.iloc[10:25] = 0.5 * side                            # filled at bar 11's open, sold at bar 26's
         res = bt.run(p, T)
         t = ledger(p, res).iloc[0]
-        by_hand = side * (o[26] / o[11] - 1) - 2 * RATE + side * 1.5 / o[11]
+        # per unit of the money it entered with: the entry's cost is a share of the equity before it (half the equity
+        # bought, so the money left after it is 1 - 0.5 x RATE of it), the exit's of the position's value at its open
+        by_hand = side * (o[26] / o[11] - 1) - RATE / (1 - 0.5 * RATE) - RATE * o[26] / o[11] + side * 1.5 / o[11]
         if side < 0:                                           # the short pays its borrow on its value at each open
             days = (p.index[11:26] - p.index[10:25]) / bt.YEAR
             by_hand -= BORROW * float(np.sum(days * o[11:26])) / o[11]
@@ -228,7 +255,53 @@ def test_a_perp_trades_net_return_pays_the_funding_it_held_through(tmp_path, mon
     cost = COSTS["crypto_perp"].commission_bps / 1e4 + COSTS["crypto_perp"].half_spread_bps / 1e4
     # 0.1% of the value at each settlement held: 100 at 08:00, 16:00 and midnight the first day, then 104, 108 and 110
     paid = 0.001 * (100 + 100 + 100 + 104 + 108 + 110) / 100
-    assert t["net_return"] == pytest.approx(110 / 100 - 1 - 2 * cost - paid, rel=1e-12)
+    # the whole equity bought (its cost over the money left after it), sold at 110 (its cost on the value there)
+    assert t["net_return"] == pytest.approx(110 / 100 - 1 - cost / (1 - cost) - cost * 110 / 100 - paid, rel=1e-12)
+
+
+def _made_of(p, res, trades):
+    """What each trade made, in money: its net return times the money it entered with, the equity after its entry's
+    fills (from the run's own path) times its size."""
+    before = np.r_[1.0, np.cumprod(1 + res.returns.to_numpy())[:-1]]
+    start = p.index.get_indexer(trades["entry_time"]) + (1 if res.fill == "next_close" else 0)
+    return trades["net_return"].to_numpy() * trades["size"].to_numpy() * before[start] * res.parts.opened[start]
+
+
+def test_a_trade_resized_on_its_way_nets_what_the_account_made_from_it():
+    p = make_panel(ids=("td:AAA",), n=40, seed=31)
+    T = pd.DataFrame({"td:AAA": 0.0}, index=p.index)
+    T.iloc[5:12], T.iloc[12:20], T.iloc[20:30] = 0.3, 0.9, 0.5   # bought at bar 6, added to at 13, cut at 21, out at 31
+    res = bt.run(p, T)
+    t = ledger(p, res)
+    assert len(t) == 1 and t["size"].iloc[0] == pytest.approx(0.3)
+    # an account in cash and units, alone in the instrument: all it made from bar 6's open to bar 31's is the trade's
+    ref = _units_account(p.open.to_numpy(), p.close.to_numpy(), T.to_numpy())
+    made = np.prod(1 + ref[:32]) - 1
+    entered = 0.3 * (1 - 0.3 * RATE)                                # the money it entered with, after its cost
+    assert t["net_return"].iloc[0] == pytest.approx(made / entered, rel=1e-10)
+    o = p.open["td:AAA"].to_numpy()
+    held_whole = (o[31] / o[6] - 1) - RATE / (1 - 0.3 * RATE) - RATE * o[31] / o[6]
+    assert abs(t["net_return"].iloc[0] - held_whole) > 1e-3          # its units changed: not its price move less costs
+
+
+@pytest.mark.parametrize("book", [False, True])
+@pytest.mark.parametrize("fill", ["next_open", "next_close"])
+def test_the_trades_together_make_what_the_account_made(book, fill):
+    p = make_panel(ids=("td:AAA", "td:BBB", "td:CCC"), seed=33, n=300)
+    T = _random_target(p, seed=34, values=(-0.3, -0.15, 0.0, 0.15, 0.3))     # long and short, resized and flipped
+    res = bt.run(p, T, fill=fill, book=book)
+    trades = ledger(p, res)
+    assert (np.sign(T.to_numpy()[:-1]) != np.sign(T.to_numpy()[1:])).any() and len(trades) > 20
+    assert _made_of(p, res, trades).sum() == pytest.approx(np.prod(1 + res.returns.to_numpy()) - 1, rel=1e-12)
+
+
+def test_trades_closed_by_their_stops_and_by_liquidation_make_together_what_the_account_made():
+    p = make_panel(ids=("td:AAA", "td:BBB"), seed=37, n=300)
+    T = _random_target(p, seed=38, values=(-0.4, 0.0, 0.4))
+    res = bt.run(p, T, exits=bt.Exits(stop=0.02, take=0.03))
+    trades = ledger(p, res)
+    assert {"exit_rule", "signal"} <= set(trades["exit_reason"])
+    assert _made_of(p, res, trades).sum() == pytest.approx(np.prod(1 + res.returns.to_numpy()) - 1, rel=1e-12)
 
 
 def _miss(p, inst, rows):
@@ -418,6 +491,26 @@ def test_a_short_whose_price_doubles_is_liquidated_there_and_loses_the_money_it_
     assert res.weights["cme:X"].iloc[3] == 0.0 and res.gross.iloc[3] == 0.0
     trades = ledger(p, res)
     assert trades["exit_reason"].tolist() == ["liquidated"] and trades["gross_return"].iloc[0] == pytest.approx(-1.0)
+
+
+def test_a_liquidated_shorts_trade_makes_what_the_account_lost_on_it():
+    for k_gap in (False, True):
+        p = make_panel(ids=("td:AAA",), n=40, seed=5)
+        o = p.open["td:AAA"].to_numpy()
+        if k_gap:                                                   # the open of bar 20 already past twice the entry
+            p.open.iloc[20:, 0] *= 3.0
+            p.high.iloc[20:, 0] *= 3.0
+            p.low.iloc[20:, 0] *= 3.0
+            p.close.iloc[20:, 0] *= 3.0
+        else:                                                       # bar 20 trades up through it
+            p.high.iloc[20, 0] = 3.0 * o[11]
+        T = pd.DataFrame({"td:AAA": 0.0}, index=p.index)
+        T.iloc[10:30] = -0.5
+        res = bt.run(p, T)
+        trades = ledger(p, res)
+        assert trades["exit_reason"].iloc[0] == "liquidated", k_gap
+        assert _made_of(p, res, trades).sum() == pytest.approx(np.prod(1 + res.returns.to_numpy()) - 1, rel=1e-12)
+        assert trades["net_return"].iloc[0] == pytest.approx(-1.0, abs=0.01), k_gap
 
 
 def test_a_short_whose_price_gaps_past_twice_its_entry_loses_no_more_than_the_money_it_was_sold_for():
