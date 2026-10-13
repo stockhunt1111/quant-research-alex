@@ -32,6 +32,10 @@ URL = f"http://127.0.0.1:{PORT}"
 # seconds the server takes to answer after a start: on a machine a re-run's workers load (load average ~100 on ten
 # cores, 2026-09-28) it took over the 30 s this was, and the restart said it had failed while the server came up
 STARTS_WITHIN = 120
+# seconds a stopped service is waited for to be gone (_booted_out): launchd gives its server 20 s after SIGTERM
+GONE_WITHIN = 30
+# seconds a bootstrap is tried again after a bootout of the same service (_bootstrap)
+BOOTSTRAP_WITHIN = 15
 
 
 def definition() -> dict:
@@ -90,9 +94,19 @@ def _wait_for_answer() -> None:
     raise SystemExit(f"the service did not answer on {URL} within {STARTS_WITHIN} s; the log's end:\n" + "\n".join(tail))
 
 
+def _booted_out() -> None:
+    """The service stopped and gone: launchctl bootout returns while launchd still tears it down and its server still
+    holds the port, and on 2026-10-13 `make service` found the port taken by the very server it had just stopped and
+    gave up, the service gone and nothing started in its place."""
+    _launchctl("bootout", f"{_domain()}/{LABEL}")
+    deadline = time.time() + GONE_WITHIN
+    while (loaded() or _listener() is not None) and time.time() < deadline:
+        time.sleep(0.2)
+
+
 def install() -> None:
     if loaded():
-        _launchctl("bootout", f"{_domain()}/{LABEL}")
+        _booted_out()
     holder = _listener()
     if holder is not None:
         raise SystemExit(f"port {PORT} is taken by {holder}: stop it (a server started in a terminal or a session), "
@@ -101,8 +115,24 @@ def install() -> None:
     PLIST.parent.mkdir(parents=True, exist_ok=True)
     with open(PLIST, "wb") as f:
         plistlib.dump(definition(), f)
-    _launchctl("bootstrap", _domain(), str(PLIST))
+    _bootstrap()
     _wait_for_answer()
+
+
+def _bootstrap() -> None:
+    """launchctl bootstrap of PLIST, tried again for BOOTSTRAP_WITHIN seconds while it fails with 5 (Input/output
+    error): launchd answered so to a bootstrap right after a bootout of the same service on 2026-10-13, with the port
+    already free."""
+    deadline = time.time() + BOOTSTRAP_WITHIN
+    while True:
+        got = _launchctl("bootstrap", _domain(), str(PLIST), check=False)
+        if got.returncode == 0:
+            return
+        if got.returncode != 5 or time.time() > deadline:
+            raise SystemExit(f"launchctl bootstrap {_domain()} {PLIST} failed ({got.returncode}): "
+                             f"{(got.stderr or got.stdout).strip()}")
+        print(f"launchctl bootstrap: {(got.stderr or got.stdout).strip()}; trying again", file=sys.stderr)
+        time.sleep(0.5)
 
 
 def restart() -> None:
@@ -114,7 +144,7 @@ def restart() -> None:
 
 def stop() -> None:
     if loaded():
-        _launchctl("bootout", f"{_domain()}/{LABEL}")
+        _booted_out()
     if PLIST.exists():
         PLIST.unlink()                          # not started at the next login either
     print(f"the service is stopped and no longer starts at login ({PLIST} removed)")
