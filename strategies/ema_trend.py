@@ -3,8 +3,8 @@ crypto and equities, markets that drift up. Long only here as well: its short si
 list's past, did worse out of sample than the long side alone on most lists and timeframes."""
 from __future__ import annotations
 
-from strategy_lab import indicators as ind
-from strategy_lab.strategy import rule
+from lab.engine.strategy import rule
+from lab.signals import indicators as ind
 
 
 @rule(grid={"fast": [10, 20, 50], "slow": [100, 200, 300]})

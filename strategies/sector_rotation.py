@@ -2,7 +2,7 @@
 the rule is usually described, parameters fixed a priori or on a small grid: here to be measured, not trusted."""
 from __future__ import annotations
 
-from strategy_lab.strategy import as_of, panel, rebalanced
+from lab.engine.strategy import as_of, panel, rebalanced
 
 
 @panel(grid={"months": [6], "top_k": [1, 2, 3, 4, 5], "rebalance": ["M"]})

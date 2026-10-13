@@ -1,7 +1,7 @@
 import math
 import os
 
-from strategy_lab import batch
+from lab import batch
 
 
 def test_pieces_keep_a_group_together_up_to_a_share_of_the_run_and_start_longest_first():

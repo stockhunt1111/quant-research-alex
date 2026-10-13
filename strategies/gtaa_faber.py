@@ -4,7 +4,7 @@ otherwise; the signal is looked at once a month and the price's moves in between
 source's 10 months are the middle of the grid, the walk-forward choosing on each list's past."""
 from __future__ import annotations
 
-from strategy_lab.strategy import period_starts, rule
+from lab.engine.strategy import period_starts, rule
 
 
 @rule(grid={"months": [6, 8, 10, 12, 14]})

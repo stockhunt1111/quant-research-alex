@@ -1,8 +1,8 @@
 import numpy as np
 import pandas as pd
 
-from strategy_lab import regimes
-from strategy_lab.shared import shared, sharing
+from lab.signals import regimes
+from lab.signals.shared import shared, sharing
 from tests.conftest import make_panel
 
 

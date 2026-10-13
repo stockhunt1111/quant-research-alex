@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from strategy_lab.strategy import bars_in, rebalanced, rule
+from lab.engine.strategy import bars_in, rebalanced, rule
 
 
 @rule(grid={"months": [3, 6, 12, 18, 24], "long_only": [True, False]})

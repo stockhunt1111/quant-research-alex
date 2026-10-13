@@ -1,7 +1,7 @@
 """Machine-learning direction model (week-1 idea list: ML strategies), refit on the past only.
 
 Features are causal indicators of the bar; the label is whether the close `horizon` bars later is higher. The
-model is refit on the walk-forward calendar (`strategy_lab.ml.refit_rows`: every window start, a quarter apart on
+model is refit on the walk-forward calendar (`lab.signals.ml.refit_rows`: every window start, a quarter apart on
 every timeframe, and twice in the first year), from the first refit with `min_train` rows on, on an expanding window
 of rows whose label was already known at the refit time (row j is usable once j + horizon <= t), then predicts the
 bars up to the next refit. Long while the predicted probability of a rise exceeds `threshold`; unless long only,
@@ -17,10 +17,10 @@ from concurrent.futures import ProcessPoolExecutor
 import numpy as np
 import pandas as pd
 
-from strategy_lab import config
-from strategy_lab import indicators as ind
-from strategy_lab.ml import refit_rows
-from strategy_lab.strategy import rule, with_short
+from lab.engine.strategy import rule, with_short
+from lab.foundation import config
+from lab.signals import indicators as ind
+from lab.signals.ml import refit_rows
 
 SEED = config.SEED          # the model's random draws: the robustness check of other seeds varies it
 # the list whose blocks the fits `prepare` made cover (None: every block); the rule reads the fits of this scope

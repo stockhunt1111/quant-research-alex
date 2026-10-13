@@ -9,10 +9,11 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from strategy_lab import db, metrics, montecarlo, per_asset, significance, trade_model, walkforward
-from strategy_lab import evaluate as ev
-from strategy_lab import robustness as rb
-from strategy_lab.config import COSTS, SEED
+from lab.engine import trade_model
+from lab.evaluation import db, metrics, montecarlo, per_asset, significance, walk, walkforward
+from lab.evaluation import evaluate as ev
+from lab.evaluation import robustness as rb
+from lab.foundation.config import COSTS, SEED
 from strategies.donchian_breakout import donchian_breakout
 from strategies.dual_momentum import dual_momentum
 from strategies.ibs import ibs
@@ -26,13 +27,13 @@ LIST = "demo_top10"
 
 def _evaluated(monkeypatch, strategy, universe=LIST, **kw):
     e = ev.evaluate(strategy, universe, "1d", save=False, **kw)
-    _, panel, member = ev._load(universe, "1d", None, None)
+    _, panel, member = walk.load(universe, "1d", None, None)
     return e, panel, member
 
 
 def _configs(strategy, universe=LIST):
     """The configurations an evaluation on the list runs: its grid for the list's number of names."""
-    return strategy.configs(ev._load(universe, "1d", None, None)[0].capacity)
+    return strategy.configs(walk.load(universe, "1d", None, None)[0].capacity)
 
 
 def _same_choices(monkeypatch, e):
@@ -60,7 +61,7 @@ def test_a_bar_later_is_the_walk_forward_with_every_decision_a_bar_later_on_the_
     e, panel, member = _evaluated(monkeypatch, donchian_breakout)
     assert e.robustness is not None and len(e.folds)
     _same_choices(monkeypatch, e)
-    *_, oos, _ = ev._walk_forward(donchian_breakout, panel, member, "next_open", _configs(donchian_breakout), "1d",
+    *_, oos, _ = walk.walk_forward(donchian_breakout, panel, member, "next_open", _configs(donchian_breakout), "1d",
                                   delay=1)
     sharpe, cagr = _figures(oos)
     assert e.robustness["delay"]["sharpe"] == pytest.approx(sharpe, rel=1e-12)
@@ -76,12 +77,12 @@ def test_costs_three_times_the_model_are_the_walk_forward_charged_three_times_th
     _same_choices(monkeypatch, e)
     tripled = {k: dataclasses.replace(c, commission_bps=3 * c.commission_bps, half_spread_bps=3 * c.half_spread_bps)
                for k, c in COSTS.items()}
-    from strategy_lab.engine import costs
+    from lab.engine import costs
     monkeypatch.setattr(costs, "COSTS", tripled)
-    ev._LOADED.clear()                               # a panel of its own: the engine keeps a panel's cost rates
-    ev._SEATING.clear()
-    _, panel, member = ev._load(LIST, "1d", None, None)
-    *_, oos, _ = ev._walk_forward(strategy, panel, member, "next_open", _configs(strategy), "1d")
+    walk._LOADED.clear()                               # a panel of its own: the engine keeps a panel's cost rates
+    walk._SEATING.clear()
+    _, panel, member = walk.load(LIST, "1d", None, None)
+    *_, oos, _ = walk.walk_forward(strategy, panel, member, "next_open", _configs(strategy), "1d")
     sharpe, cagr = _figures(oos)
     assert got["sharpe"] == pytest.approx(sharpe, rel=1e-10) and got["cagr"] == pytest.approx(cagr, rel=1e-10)
 
@@ -98,14 +99,14 @@ def test_a_cme_future_is_charged_ten_basis_points_a_side_and_a_spot_quote_three_
 def test_a_neighbouring_list_measured_inside_is_that_list_evaluated_on_its_own(monkeypatch, universe, near):
     for strategy in (rsi2_connors, ibs_ml_filter, sector_rotation):    # a panel always invested: it earns on a rise
         rising_list_market(monkeypatch)
-        ev._LOADED.clear()
-        ev._SEATING.clear()
+        walk._LOADED.clear()
+        walk._SEATING.clear()
         e, _, _ = _evaluated(monkeypatch, strategy, universe)
         lists = {x["universe"]: x for x in e.robustness["neighbour_lists"]["lists"]}
         assert list(lists) == near
         for u, got in lists.items():
-            ev._LOADED.clear()
-            ev._SEATING.clear()
+            walk._LOADED.clear()
+            walk._SEATING.clear()
             alone = ev.evaluate(strategy, u, "1d", save=False, robustness=False, monte_carlo=False)
             assert got["sharpe"] == pytest.approx(alone.oos["sharpe"], rel=1e-12), (strategy.name, u)
 
@@ -117,7 +118,7 @@ def test_another_seed_is_the_walk_forward_with_the_model_drawing_with_it_on_the_
     assert trade_model.SEED == SEED                                   # the evaluation gave the model its seed back
     _same_choices(monkeypatch, e)
     monkeypatch.setattr(trade_model, "SEED", 3)
-    *_, oos, _ = ev._walk_forward(ibs_ml_filter, panel, member, "next_open", _configs(ibs_ml_filter), "1d")
+    *_, oos, _ = walk.walk_forward(ibs_ml_filter, panel, member, "next_open", _configs(ibs_ml_filter), "1d")
     assert got[3] == pytest.approx(metrics.core(oos)["sharpe"], rel=1e-12)
 
 
@@ -145,13 +146,13 @@ def test_the_rule_without_its_model_is_the_rule_itself(monkeypatch):
 def test_a_model_check_that_fails_leaves_the_models_seed_as_it_found_it(monkeypatch):
     rising_list_market(monkeypatch)
     before = trade_model.SEED
-    real = ev._run
+    real = walk.run
 
     def fails_on_another_seed(*a, **k):
         if trade_model.SEED != before:
             raise RuntimeError("a run that fails")
         return real(*a, **k)
-    monkeypatch.setattr(ev, "_run", fails_on_another_seed)
+    monkeypatch.setattr(walk, "run", fails_on_another_seed)
     with pytest.raises(RuntimeError):
         ev.evaluate(ibs_ml_filter, LIST, "1d", save=False)
     assert trade_model.SEED == before
@@ -192,7 +193,7 @@ def test_an_instrument_alone_is_checked_as_a_list_is_but_for_a_lists_own_checks(
     assert len(picks) > 1
     monkeypatch.setattr(walkforward, "choose", lambda daily, fl: picks)
     alone = store_of(p)([i], "1d")
-    *_, oos, _ = ev._walk_forward(donchian_breakout, alone, None, "next_open", configs, "1d", delay=1)
+    *_, oos, _ = walk.walk_forward(donchian_breakout, alone, None, "next_open", configs, "1d", delay=1)
     sharpe, cagr = _figures(oos)
     assert o.robustness["delay"]["sharpe"] == pytest.approx(sharpe, rel=1e-12)
     assert o.robustness["delay"]["cagr"] == pytest.approx(cagr, rel=1e-12)

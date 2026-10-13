@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from strategy_lab.strategy import panel, slotted
+from lab.engine.strategy import panel, slotted
 
 
 @panel(grid={"z": [2.5, 3.0, 3.5], "vol_mult": [1.5, 2.0, 3.0], "hold": [5, 10, 20], "max_positions": [5],

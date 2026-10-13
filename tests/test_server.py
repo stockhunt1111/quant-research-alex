@@ -19,17 +19,18 @@ import pytest
 import uvicorn
 from fastapi.testclient import TestClient
 
-from strategy_lab import board, db, lists, per_asset, runs
-from strategy_lab.config import ROOT_DIR
+from backend import live as live_module
+from backend import market_index, schemas
+from backend.__main__ import Server
+from backend.app import create_app
+from backend.live import Live
+from backend.research import MIN_TRADES, Research, asset_label, name_apart
+from backend.runner import Runner, batches_in_terminals
+from lab import runs
+from lab.data import lists
+from lab.evaluation import board, db, per_asset
+from lab.foundation.config import ROOT_DIR
 from strategies.donchian_breakout import donchian_breakout
-
-from server import live as live_module
-from server import market_index, schemas
-from server.__main__ import Server
-from server.app import create_app
-from server.live import Live
-from server.research import MIN_TRADES, Research, asset_label, name_apart
-from server.runner import Runner, batches_in_terminals
 from tests.conftest import make_panel, rising_list_market, store_of
 from tests.test_db import FIXTURES, _import
 
@@ -173,7 +174,7 @@ def test_a_single_assets_row_is_checked_against_the_tries_on_its_instrument_and_
 @pytest.fixture
 def btc_stored(tmp_path, monkeypatch):
     """The fixture results' index (they are all crypto but FX's) held on a synthetic BTC, not on the store's."""
-    from strategy_lab.data import bars, store
+    from lab.data import bars, store
     monkeypatch.setattr(store, "STORE_DIR", tmp_path / "store")
     monkeypatch.setattr(bars, "STORE_DIR", tmp_path / "store")
     monkeypatch.setattr(market_index, "_panels", {})
@@ -257,7 +258,7 @@ def test_every_answer_holds_to_the_shapes_the_page_is_typed_with(client):
         schemas.ResultView.model_validate(client.get("/api/research/result", params={"key": key}).json())
     assert {a.id for a in meta.assets} == {r.instrument_id for r in rows}
     assert schemas.RunCurrent.model_validate(client.get("/api/runs/current").json()).run is None
-    committed = json.loads((ROOT_DIR / "ui" / "web" / "openapi.json").read_text())
+    committed = json.loads((ROOT_DIR / "frontend" / "openapi.json").read_text())
     assert committed == client.app.openapi(), "the API changed: `make api` writes openapi.json and the page's types"
 
 
@@ -362,7 +363,7 @@ class Stream:
 
 TOUCH = """
 import sys
-from strategy_lab import db
+from lab.evaluation import db
 c = db.connect(sys.argv[1])
 with db.write(c):
     c.execute("UPDATE result SET evaluated_at = evaluated_at WHERE strategy = 'gtaa_faber'")
@@ -416,7 +417,7 @@ def test_the_luck_bar_is_worked_out_once_after_a_run_and_never_while_one_is_on(i
                            "code_sha_at_start, pid, heartbeat_at) VALUES (?, 'ui', 0, 0, 'running', '', ?, ?) "
                            "RETURNING id", (db.now(), os.getpid(), db.now())).fetchone()[0]
     assert board.current_tries(conn) is None
-    live = Live(Research(imported), Runner(imported), judge=[sys.executable, "-m", "strategy_lab", "db", "judge"])
+    live = Live(Research(imported), Runner(imported), judge=[sys.executable, "-m", "lab", "db", "judge"])
     live.poll()
     assert live._judging is None, "a run is on: its results are judged against the last bar"
     with db.write(conn):
@@ -448,13 +449,13 @@ def test_a_judge_that_ends_well_leaving_a_bar_uncovered_is_not_started_again_unt
     conn.close()
 
 
-WEB = ROOT_DIR / "ui" / "web"
+WEB = ROOT_DIR / "frontend"
 
 
 @pytest.mark.skipif(not (WEB / "node_modules").exists() or shutil.which("npm") is None,
                     reason="the page's dependencies are not installed (make ui)")
 def test_every_view_of_the_page_renders_from_the_servers_answers(serving):
-    """ui/web/check/render.tsx renders the page in node from this server's answers: the lists, the single assets and
+    """frontend/check/render.tsx renders the page in node from this server's answers: the lists, the single assets and
     each kind of popup, every section present, nothing in another language than English."""
     _, port = serving
     got = subprocess.run(["npm", "run", "--silent", "check:render", "--", f"http://127.0.0.1:{port}"], cwd=WEB,
@@ -465,7 +466,8 @@ def test_every_view_of_the_page_renders_from_the_servers_answers(serving):
 # ---------------------------------------------------------------------------------------------------- runs
 FAKE_RUN = textwrap.dedent("""
     import sys, time
-    from strategy_lab import catalog, db, runs, strategy_pick
+    from lab import catalog, runs
+    from lab.evaluation import db, strategy_pick
     def job(j):
         job_id, stage, name, universe, tf = j
         c = runs._conn()

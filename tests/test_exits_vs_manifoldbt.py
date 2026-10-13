@@ -11,11 +11,11 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from strategy_lab import indicators as ind
-from strategy_lab.data.bars import FIELDS, Panel
-from strategy_lab.data.instruments import parse
-from strategy_lab.engine import backtest as bt
-from strategy_lab.engine.trades import ledger
+from lab.data.bars import FIELDS, Panel
+from lab.data.instruments import parse
+from lab.engine import backtest as bt
+from lab.engine.trades import ledger
+from lab.signals import indicators as ind
 
 FIX = Path(__file__).parent / "fixtures"
 VARIANTS = {"stop5": bt.Exits(stop=0.05), "take10": bt.Exits(take=0.10), "trail8": bt.Exits(trail=0.08),

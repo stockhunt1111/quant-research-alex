@@ -2,8 +2,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from strategy_lab.data import minutes
-from strategy_lab.data.minute_refresh import agreeing_months, conformed
+from lab.data import minutes
+from lab.upkeep.minute_refresh import agreeing_months, conformed
 from tests.conftest import make_minutes
 
 
@@ -67,7 +67,7 @@ def test_a_vendors_minutes_are_put_on_the_stored_hours_basis_session_by_session(
     """The stored hours are the vendor's rescaled where its intraday series misses a corporate action: its minutes,
     scaled by each session's ratio of stored to made closes, make the stored hours' highs and lows exactly again, and
     minutes of a session the store has no hour of are not kept."""
-    from strategy_lab.data.minute_refresh import on_stored_hours
+    from lab.upkeep.minute_refresh import on_stored_hours
     mins, hours = make_minutes(seed=10, days=6)
     stored = hours.copy()
     first_days = stored.index <= "2024-01-04 05:00"           # New York's sessions to January 3rd
@@ -85,7 +85,8 @@ def test_an_archive_minute_without_a_trade_is_not_kept():
     would open the hour where the exchange's hourly bar, opened by the hour's first trade, does not."""
     import io
     import zipfile
-    from strategy_lab.data.minute_refresh import _klines
+
+    from lab.upkeep.minute_refresh import _klines
     rows = ["open_time,open,high,low,close,volume,close_time,quote_volume,count,taker_buy_volume,"
             "taker_buy_quote_volume,ignore",
             "1567296000000,0.0026,0.0026,0.0026,0.0026,0,1567296059999,0,0,0,0,0",           # no trade

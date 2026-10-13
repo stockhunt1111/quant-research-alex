@@ -6,11 +6,14 @@ import pandas as pd
 import pytest
 from sklearn.metrics import roc_auc_score
 
-from strategy_lab import config, lookahead, ml, trade_model
-from strategy_lab.data.bars import FIELDS, Panel
-from strategy_lab.engine import backtest as bt
-from strategy_lab.engine.trades import ledger
-from strategy_lab.strategy import load
+from lab.data.bars import FIELDS, Panel
+from lab.engine import backtest as bt
+from lab.engine import trade_model
+from lab.engine.strategy import load
+from lab.engine.trades import ledger
+from lab.evaluation import lookahead
+from lab.foundation import config
+from lab.signals import ml
 from strategies.ibs import ibs
 from strategies.ibs_ml_filter import ibs_ml_filter
 from tests.conftest import make_panel

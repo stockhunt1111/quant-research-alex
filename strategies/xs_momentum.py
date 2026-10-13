@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from strategy_lab.strategy import as_of, calendar_months, long_short, panel, rebalanced
+from lab.engine.strategy import as_of, calendar_months, long_short, panel, rebalanced
 
 
 @panel(grid={"months": [1, 3, 6], "frac": [0.1, 0.2, 0.3], "rebalance": ["W"]})

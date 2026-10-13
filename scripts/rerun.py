@@ -1,4 +1,4 @@
-"""A re-run of the research, from a terminal: the run the UI's Re-run starts (strategy_lab.runs).
+"""A re-run of the research, from a terminal: the run the UI's Re-run starts (lab.runs).
 
     python scripts/rerun.py                       # every strategy on every list, skipping what the current code produced
     python scripts/rerun.py --single-assets       # and each strategy on each instrument alone, and the ML task's picks
@@ -19,8 +19,10 @@ from __future__ import annotations
 
 import argparse
 
-from strategy_lab import db, log, runs
-from strategy_lab.config import ROOT_DIR, TIMEFRAMES
+from lab import runs
+from lab.evaluation import db
+from lab.foundation import log
+from lab.foundation.config import ROOT_DIR, TIMEFRAMES
 
 
 def main() -> None:

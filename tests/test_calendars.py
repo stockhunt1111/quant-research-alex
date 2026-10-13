@@ -1,8 +1,8 @@
 import numpy as np
 import pandas as pd
 
-from strategy_lab.data import calendars as cal
-from strategy_lab.data import resample
+from lab.data import calendars as cal
+from lab.data import resample
 
 
 def _utc(s):

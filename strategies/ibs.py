@@ -5,8 +5,8 @@ as the other mean reversions that hold to their exit: their short side did worse
 alone on most lists and timeframes."""
 from __future__ import annotations
 
-from strategy_lab import indicators as ind
-from strategy_lab.strategy import hold_between, rule
+from lab.engine.strategy import hold_between, rule
+from lab.signals import indicators as ind
 
 
 @rule(grid={"buy_below": [0.15, 0.2, 0.25], "sell_above": [0.75, 0.8, 0.85], "slots": [None, 5, 10, 20]})

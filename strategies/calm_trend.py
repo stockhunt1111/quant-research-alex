@@ -3,9 +3,9 @@ short side, taken by the walk-forward on a list's past, did worse out of sample 
 and timeframes."""
 from __future__ import annotations
 
-from strategy_lab import indicators as ind
-from strategy_lab import regimes
-from strategy_lab.strategy import rule
+from lab.engine.strategy import rule
+from lab.signals import indicators as ind
+from lab.signals import regimes
 
 
 @rule(grid={"fast": [10, 20, 50], "slow": [100, 200, 300], "k": [3, 5, 10], "max_vol_state": [0, 1]})

@@ -1,10 +1,9 @@
 import numpy as np
 import pandas as pd
 
-from strategy_lab import universes
-from strategy_lab.data import store
-from strategy_lab.data.bars import FIELDS, Panel
-from strategy_lab.universes import top_liquid
+from lab.data import store, universes
+from lab.data.bars import FIELDS, Panel
+from lab.data.universes import top_liquid
 from tests.conftest import make_panel
 
 

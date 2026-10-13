@@ -2,9 +2,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from strategy_lab.config import COSTS
-from strategy_lab.engine import backtest as bt
-from strategy_lab.engine.trades import ledger
+from lab.data import delisting
+from lab.engine import backtest as bt
+from lab.engine.trades import ledger
+from lab.foundation.config import COSTS
 from tests.conftest import make_minutes, make_panel
 
 RATE = (COSTS["us_equity"].commission_bps + COSTS["us_equity"].half_spread_bps) / 1e4
@@ -76,7 +77,7 @@ def test_next_close_fills_at_the_close_a_bar_later_and_holds_units(book):
 
 
 def test_a_book_decided_again_is_brought_back_to_its_weights_though_they_repeat():
-    from strategy_lab.strategy import period_starts
+    from lab.engine.strategy import period_starts
     p = make_panel(seed=23, n=400)
     T = pd.DataFrame(0.5, index=p.index, columns=p.ids)                  # the same two names, half each, every month
     decided = period_starts(p.index, "M")
@@ -125,7 +126,7 @@ def test_long_and_short_positions_hold_units_as_an_account_that_pays_its_borrow_
 
 
 def test_a_book_between_its_decisions_sells_a_name_that_left_alone_and_holds_the_rest():
-    from strategy_lab.strategy import period_starts
+    from lab.engine.strategy import period_starts
     p = make_panel(ids=("td:AAA", "td:BBB", "td:CCC"), seed=35, n=200)
     decided = period_starts(p.index, "M")
     T = pd.DataFrame(0.3, index=p.index, columns=p.ids)
@@ -183,8 +184,8 @@ def test_gross_above_capital_is_refused():
 
 def _bars(rows, instrument="td:X"):
     """Tiny single-instrument panel from (open, high, low, close) rows."""
-    from strategy_lab.data.bars import Panel
-    from strategy_lab.data.instruments import parse
+    from lab.data.bars import Panel
+    from lab.data.instruments import parse
     idx = pd.date_range("2024-01-01 21:00", periods=len(rows), freq="D", tz="UTC")
     a = np.array(rows, dtype=float)
     cols = {"open": a[:, 0], "high": a[:, 1], "low": a[:, 2], "close": a[:, 3],
@@ -352,17 +353,17 @@ def test_a_series_ending_a_few_days_early_is_a_vendor_lag_and_stays_open():
 
 
 def test_a_perp_the_exchange_delisted_ends_at_its_last_bar_even_close_to_the_data_end(tmp_path, monkeypatch):
-    from strategy_lab.data import store
+    from lab.data import store
     monkeypatch.setattr(store, "STORE_DIR", tmp_path)
     p = _miss(make_panel(ids=("perp:AAAUSDT", "perp:BBBUSDT"), n=40, seed=6), "perp:BBBUSDT", [38, 39])
-    assert not bt.ended(p)["perp:BBBUSDT"].any()                     # two days short: a vendor lag, by the bars alone
+    assert not delisting.ended(p)["perp:BBBUSDT"].any()            # two days short: a vendor lag, by the bars alone
     store.write_meta("perp", "1d", "BBBUSDT", {"delisted": str(p.index[37])})       # the exchange delivered it
-    stopped = bt.ended(p)
+    stopped = delisting.ended(p)
     assert stopped["perp:BBBUSDT"].tolist()[-3:] == [False, True, True] and not stopped["perp:AAAUSDT"].any()
 
 
 def test_a_perp_delisted_and_listed_anew_holds_nothing_between_and_trades_again_after(tmp_path, monkeypatch):
-    from strategy_lab.data import bars, store
+    from lab.data import bars, store
     monkeypatch.setattr(store, "STORE_DIR", tmp_path)
     monkeypatch.setattr(bars, "STORE_DIR", tmp_path)
     p = _miss(make_panel(ids=("perp:AAAUSDT", "perp:BBBUSDT"), n=60, seed=9), "perp:BBBUSDT", list(range(20, 36)))
@@ -394,7 +395,8 @@ def test_a_position_closed_because_its_instrument_left_the_list_is_marked_so():
 
 def test_a_panel_backtested_again_after_its_funding_was_rewritten_pays_the_new_funding(tmp_path, monkeypatch):
     import os
-    from strategy_lab.data import bars, store
+
+    from lab.data import bars, store
     monkeypatch.setattr(store, "STORE_DIR", tmp_path)
     monkeypatch.setattr(bars, "STORE_DIR", tmp_path)
     p = make_panel(ids=("perp:AAAUSDT",), n=30, seed=3)
@@ -409,7 +411,7 @@ def test_a_panel_backtested_again_after_its_funding_was_rewritten_pays_the_new_f
 
 
 def _store_dividends(tmp_path, monkeypatch, symbol, ex_dates, amount):
-    from strategy_lab.data import bars, store
+    from lab.data import bars, store
     monkeypatch.setattr(store, "STORE_DIR", tmp_path)
     monkeypatch.setattr(bars, "STORE_DIR", tmp_path)
     path = tmp_path / "td" / "dividends" / f"{symbol}.parquet"
@@ -565,8 +567,8 @@ def test_an_atr_stop_and_target_sit_their_multiples_of_the_average_true_range_fr
 
 
 def _hourly_panel(hours: pd.DataFrame, instrument: str):
-    from strategy_lab.data.bars import Panel
-    from strategy_lab.data.instruments import parse
+    from lab.data.bars import Panel
+    from lab.data.instruments import parse
     cols = {**{f: hours[f] for f in ("open", "high", "low", "close")}, "volume": pd.Series(1e6, index=hours.index),
             "dollar_volume": hours["close"] * 1e6}
     return Panel("1h", {instrument: parse(instrument)}, **{f: pd.DataFrame({instrument: v}) for f, v in cols.items()})
@@ -608,7 +610,7 @@ def test_a_trailing_stop_walked_through_minutes_is_the_stop_a_bot_resets_at_ever
     """Re-set every minute where the store has an instrument's minutes, a trailing stop's level moves after each minute
     inside the bar and is checked against each: the same exits, at the same prices, as an account of a stop re-set at
     every minute's close; an hour whose minutes are missing is walked on its own prices."""
-    from strategy_lab.data import minutes
+    from lab.data import minutes
     mins, hours = make_minutes(seed=5)
     kept = mins.drop(mins.index[(mins.index > "2024-01-02 06:00") & (mins.index <= "2024-01-02 18:00")])
     minutes.write("td:AAA", kept, {"source": "test"})
@@ -659,7 +661,7 @@ def _stop_reset_every_hour(hours, mins, target, trail):
 def test_a_trailing_stop_re_set_once_a_bar_is_checked_against_its_minutes():
     """Re-set once a bar, the level holds through the bar, from the best high of the bars before; its minutes decide
     only whether and where it is hit: at the level, or at the open of a minute that gaps through it."""
-    from strategy_lab.data import minutes
+    from lab.data import minutes
     mins, hours = make_minutes(seed=9)
     minutes.write("td:AAA", mins, {"source": "test"})
     p = _hourly_panel(hours, "td:AAA")
@@ -677,8 +679,8 @@ def test_a_trailing_stop_re_set_once_a_bar_is_checked_against_its_minutes():
 def _closes(**series):
     """A daily panel of US listings from their closes: each bar opens at the close before it (no gap), its range the
     two."""
-    from strategy_lab.data.bars import Panel
-    from strategy_lab.data.instruments import parse
+    from lab.data.bars import Panel
+    from lab.data.instruments import parse
     idx = pd.date_range("2024-01-01 21:00", periods=len(next(iter(series.values()))), freq="D", tz="UTC")
     close = pd.DataFrame({f"td:{k}": v for k, v in series.items()}, index=idx, dtype=float)
     opn = close.shift(1).fillna(close)
@@ -724,7 +726,7 @@ def test_a_sale_goes_through_while_the_positions_hold_more_than_the_capital_and_
 
 
 def test_a_settlement_stamped_after_its_hour_is_paid_by_the_position_held_into_it(tmp_path, monkeypatch):
-    from strategy_lab.data import bars, store
+    from lab.data import bars, store
     monkeypatch.setattr(store, "STORE_DIR", tmp_path)
     monkeypatch.setattr(bars, "STORE_DIR", tmp_path)
     p = make_panel(ids=("perp:AAAUSDT",), n=48, seed=5, freq="h", start="2024-01-01 01:00")
@@ -752,8 +754,8 @@ def test_a_settlement_stamped_after_its_hour_is_paid_by_the_position_held_into_i
 def _one_perp_day(tmp_path, monkeypatch, *, with_minutes: bool):
     """A perp's daily bars around a day (2024-01-03) that opens at 100, is at 104 at 08:00 and 108 at 16:00, falls to 94
     in the minute from 17:00 and closes at 110; its funding due at 08:00, 16:00 and midnight every day, 0.1% each."""
-    from strategy_lab.data import bars, minutes, store
-    from strategy_lab.data.instruments import parse
+    from lab.data import bars, minutes, store
+    from lab.data.instruments import parse
     monkeypatch.setattr(store, "STORE_DIR", tmp_path)
     monkeypatch.setattr(bars, "STORE_DIR", tmp_path)
     idx = pd.DatetimeIndex(["2024-01-02", "2024-01-03", "2024-01-04", "2024-01-05"], tz="UTC")    # the days' closes

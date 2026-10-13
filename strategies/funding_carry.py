@@ -6,8 +6,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from strategy_lab.data.bars import load_funding
-from strategy_lab.strategy import long_short, panel, rebalanced
+from lab.data.bars import load_funding
+from lab.engine.strategy import long_short, panel, rebalanced
 
 
 def trailing_funding(settlements: pd.Series, at: pd.DatetimeIndex, days: int) -> pd.Series:

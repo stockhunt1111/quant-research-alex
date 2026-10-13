@@ -5,8 +5,9 @@ import pandas as pd
 import pytest
 
 import strategies
-from strategy_lab.data.bars import Panel
-from strategy_lab.strategy import load, rule, seats
+from lab.data.bars import Panel
+from lab.engine.strategy import load, rule, seats
+from lab.evaluation import walk
 from tests.conftest import make_panel
 
 BARS = pd.date_range("2024-01-01", periods=30, freq="D", tz="UTC")
@@ -206,7 +207,7 @@ def _counted_rsi2(calls: list):
 
 
 def test_positions_kept_on_disk_are_read_back_by_a_later_evaluation_as_the_rule_computed_them():
-    from strategy_lab.strategy import fill_signals
+    from lab.engine.strategy import fill_signals
     calls: list = []
     s = _counted_rsi2(calls)
     p = make_panel(ids=("td:AAA", "td:BBB", "td:CCC"), n=500, seed=7)
@@ -225,8 +226,8 @@ def test_positions_kept_on_disk_are_read_back_by_a_later_evaluation_as_the_rule_
 
 
 def test_a_bar_written_anew_is_other_bars_and_its_rule_computes_them_again():
-    from strategy_lab.data.bars import FIELDS
-    from strategy_lab.strategy import fill_signals
+    from lab.data.bars import FIELDS
+    from lab.engine.strategy import fill_signals
     calls: list = []
     s = _counted_rsi2(calls)
     p = make_panel(ids=("td:AAA", "td:BBB", "td:CCC"), n=500, seed=7)
@@ -242,14 +243,14 @@ def test_a_bar_written_anew_is_other_bars_and_its_rule_computes_them_again():
     for sig in signal_configs:                         # and its positions are the ones its new bars give
         sp = s.signal_params(next(c for c in s.configs() if repr(sorted(s.signal_params(c).items())) == sig))
         alone[sig] = s.fn(rewritten.one("td:BBB"), **sp)
-    from strategy_lab.strategy import _aligned, _packed
+    from lab.engine.strategy import _aligned, _packed
     for sig, out in alone.items():
         assert np.array_equal(fresh[(sig, "td:BBB")], _packed(_aligned(out, rewritten.index)))
 
 
 def _series_panel(closes: dict, timeframe="1d", index=None) -> Panel:
     """A panel of the given close paths (open at the close before, a 0.5% range around both)."""
-    from strategy_lab.data.instruments import parse
+    from lab.data.instruments import parse
     idx = index if index is not None else pd.date_range("2020-01-01", periods=len(next(iter(closes.values()))),
                                                        freq="D", tz="UTC")
     c = pd.DataFrame(closes, index=idx, dtype=float)
@@ -259,7 +260,7 @@ def _series_panel(closes: dict, timeframe="1d", index=None) -> Panel:
 
 
 def test_a_period_opens_at_the_first_close_at_or_after_its_turn():
-    from strategy_lab.strategy import period_starts
+    from lab.engine.strategy import period_starts
     hours = pd.date_range("2024-01-31 21:00", "2024-02-01 03:00", freq="h", tz="UTC")     # a coin's hourly closes
     assert list(hours[period_starts(hours, "M")]) == [hours[0], pd.Timestamp("2024-02-01 00:00", tz="UTC")]
     sessions = pd.DatetimeIndex(["2024-01-30 21:00", "2024-01-31 21:00", "2024-02-01 21:00", "2024-02-02 21:00",
@@ -271,7 +272,7 @@ def test_a_period_opens_at_the_first_close_at_or_after_its_turn():
 
 def _stock_hours(start: str, end: str) -> pd.DatetimeIndex:
     """A US listing's hourly closes (10:30 .. 15:30 and the 16:00 close, New York) on the NYSE's full sessions."""
-    from strategy_lab.data.calendars import nyse_sessions
+    from lab.data.calendars import nyse_sessions
     s = nyse_sessions(pd.Timestamp(start), pd.Timestamp(end))
     full = s[(s["market_close"] - s["market_open"]) == pd.Timedelta(hours=6, minutes=30)]
     return pd.DatetimeIndex([o + pd.Timedelta(minutes=60 * h + 60) for o in full["market_open"] for h in range(6)]
@@ -279,7 +280,7 @@ def _stock_hours(start: str, end: str) -> pd.DatetimeIndex:
 
 
 def test_a_span_in_months_is_the_same_time_on_every_timeframe():
-    from strategy_lab.strategy import bars_in
+    from lab.engine.strategy import bars_in
     coin_hours = pd.date_range("2021-01-01", periods=24 * 800, freq="h", tz="UTC")
     coin_days = pd.date_range("2021-01-02", periods=800, freq="D", tz="UTC")
     stock_hours = _stock_hours("2021-01-01", "2023-06-30")
@@ -303,7 +304,7 @@ def test_a_monthly_rule_ignores_the_moves_inside_a_month():
     assert (faber["2022-01-01":] == 1.0).all()           # Faber looks at the month's end only: held through the dip
     daily = p.close["perp:BTCUSDT"] > p.close["perp:BTCUSDT"].rolling(210).mean()
     assert not daily["2023-06-08":"2023-06-20"].any()    # a daily 210-day average would have sold it
-    from strategy_lab.strategy import period_starts
+    from lab.engine.strategy import period_starts
     for name, params in (("tsmom", {"months": 3, "long_only": False}), ("vol_managed", {"vol_months": 1, "target_vol": 0.1}),
                          ("gtaa_faber", {"months": 10})):
         pos = load(name).fn(p.one("perp:BTCUSDT"), **params)
@@ -337,7 +338,7 @@ def test_connors_rsi2_sells_on_the_first_close_above_the_five_bar_average():
 def _priced(n: int, **closes) -> Panel:
     """A daily panel of US listings from their closes: each bar opens at the close before it, its range the two
     widened a little."""
-    from strategy_lab.data.instruments import parse
+    from lab.data.instruments import parse
     idx = pd.date_range("2024-01-01 21:00", periods=n, freq="D", tz="UTC")
     close = pd.DataFrame({f"td:{k}": np.asarray(v, dtype=float) for k, v in closes.items()}, index=idx)
     opn = close.shift(1).fillna(close)
@@ -347,7 +348,6 @@ def _priced(n: int, **closes) -> Panel:
 
 
 def test_a_name_seated_in_the_middle_of_its_rules_trade_leaves_with_the_trade_at_its_stop():
-    from strategy_lab import evaluate as ev
     n = 40
     rise = np.r_[np.linspace(100, 130, 21), np.linspace(130, 80, n - 21)]
     p = _priced(n, AAA=np.full(n, 50.0), BBB=rise)
@@ -355,7 +355,7 @@ def test_a_name_seated_in_the_middle_of_its_rules_trade_leaves_with_the_trade_at
     member.iloc[:20, 1] = False                               # BBB joins the list at bar 20, its rule long since 5
     long_from_5 = rule(grid={"stop": [0.1]})(lambda bars: pd.Series((np.arange(len(bars)) >= 5).astype(float),
                                                                      index=bars.index))
-    res = ev._run(long_from_5, p, {"stop": 0.1}, member, "next_open")
+    res = walk.run(long_from_5, p, {"stop": 0.1}, member, "next_open")
     # the rule's trade: in at bar 6's open, out where a low first reaches 10% under that; the seat's position, bought
     # at bar 21's open at 130, leaves with it there at that level, not 10% under its own fill
     level = 0.9 * p.open["td:BBB"].iloc[6]
@@ -369,8 +369,7 @@ def test_a_name_seated_in_the_middle_of_its_rules_trade_leaves_with_the_trade_at
 
 
 def test_a_panel_of_positions_trades_a_new_one_and_leaves_those_held_as_they_are():
-    from strategy_lab import evaluate as ev
-    from strategy_lab.strategy import panel as panel_strategy
+    from lab.engine.strategy import panel as panel_strategy
     n = 30
     p = _priced(n, AAA=np.r_[np.full(10, 100.0), np.full(n - 10, 120.0)], BBB=np.full(n, 100.0))
 
@@ -379,8 +378,8 @@ def test_a_panel_of_positions_trades_a_new_one_and_leaves_those_held_as_they_are
         w.iloc[5:, 0] = 0.5
         w.iloc[20:, 1] = 0.5
         return w
-    own = ev._run(panel_strategy(book=False)(events), p, {}, None, "next_open")
-    book = ev._run(panel_strategy()(events), p, {}, None, "next_open")
+    own = walk.run(panel_strategy(book=False)(events), p, {}, None, "next_open")
+    book = walk.run(panel_strategy()(events), p, {}, None, "next_open")
     grown = 0.5 * 1.2 / (1 + 0.5 * 0.2)                      # AAA's weight at bar 21's open: half, up 20%
     assert own.weights["td:AAA"].iloc[21] == 0.5              # left as it is (its last fill)
     assert own.turnover.iloc[21] == pytest.approx(1 - grown, rel=1e-9)       # BBB bought with the cash there is
@@ -411,7 +410,7 @@ def test_of_names_joining_on_one_bar_the_more_liquid_takes_the_first_free_seat()
 
 def test_positions_kept_on_disk_are_keyed_by_the_model_library_as_by_the_code(monkeypatch):
     import strategies.ml_feature_search as mfs
-    from strategy_lab import strategy
+    from lab.engine import strategy
     path = mfs.__file__
     strategy._code_of.cache_clear()
     monkeypatch.setattr(strategy, "_version_of", lambda package: "4.7.0")

@@ -2,9 +2,9 @@ import numpy as np
 import pandas as pd
 
 import strategies.funding_carry as carry
+from lab.evaluation import lookahead
 from strategies.betting_against_beta import betting_against_beta
 from strategies.xs_momentum import xs_momentum
-from strategy_lab import lookahead
 from tests.conftest import make_panel
 
 

@@ -2,9 +2,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from strategy_lab import lookahead, market
-from strategy_lab.data.bars import Panel
-from strategy_lab.strategy import fill_signals, load
+from lab.data import market
+from lab.data.bars import Panel
+from lab.engine.strategy import fill_signals, load
+from lab.evaluation import lookahead
 from tests.conftest import MARKET_INDEX, make_panel
 
 READERS = ["market_regime", "regime_ema_trail"]

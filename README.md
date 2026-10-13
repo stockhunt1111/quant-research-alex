@@ -3,9 +3,9 @@
 A strategy in a few lines, measured against the firm's target in one call.
 
 ```python
-from strategy_lab import indicators as ind
-from strategy_lab.strategy import rule
-from strategy_lab.evaluate import evaluate
+from lab.signals import indicators as ind
+from lab.engine.strategy import rule
+from lab.evaluation.evaluate import evaluate
 
 @rule(grid={"fast": [10, 20, 50], "slow": [100, 200], "stop": [None, 0.05]})
 def sma_cross(bars, fast, slow):
@@ -16,27 +16,41 @@ ev = evaluate(sma_cross, "etf_core", "1d")
 print(ev.summary())
 ```
 
+## What is where
+
+| Folder | What it holds |
+|---|---|
+| `lab/` | The research engine, a package in layers, each built on the ones under it and never on one above (`tests/test_architecture.py` holds them): `foundation/` (paths, the firm's target, the log, which code made a saved result), `data/` (the bar store and how it is read, the research lists and their members), `signals/` (indicators, regimes, the models' features), `engine/` (the backtest, its costs, buy & hold, the trade ledger, how a strategy is written), `evaluation/` (walk-forward, the scorecard, significance, robustness, an evaluation and the database it is saved to), `upkeep/` (bringing the store up to date from the vendors, and checking it); its root: the re-runs, the batches and the command line |
+| `strategies/` | One strategy per file |
+| `backend/` | The web UI's server: Research and a result's popup from the database, the re-runs started from the page, this Mac's service |
+| `frontend/` | The web UI's page: React, Vite and TypeScript |
+| `mockup/` | Pages not built yet, as static HTML (Portfolios) |
+| `scripts/` | Runs from a terminal: the re-run, every strategy on its lists, each strategy on each instrument alone, the import of saved reports |
+| `research/` | The measurements behind this README's conclusions, to run again |
+| `tests/` | The offline test suite (`make test`) |
+| `data/`, `db/`, `logs/` | The bar store, the app's database and the logs, outside git |
+
 ## Setup
 
 ```bash
 make setup      # Python 3.12 venv with pinned dependencies (+ lightgbm, pytest, ruff, the web server)
 make seed       # build the bar store from the previous project's disk (no network)
 make test       # offline test suite
-make ui         # build the web page (Node; once, and after a change of ui/web)
+make ui         # build the web page (Node; once, and after a change of frontend)
 make serve      # http://127.0.0.1:8600: Research, a result's popup and the re-run, live from the database
 make service    # the same as a service of this Mac: started at login and whenever it stops (log: logs/server.log)
 ```
 
-`make service-restart` puts the service on the code on disk after a change of server/ or strategy_lab/ (a page built
+`make service-restart` puts the service on the code on disk after a change of backend/ or lab/ (a page built
 again needs none), `make service-stop` stops it and keeps it from starting at login.
 
-Every evaluation is saved to the app's database, db/app.sqlite (SQLite in WAL mode; strategy_lab/db_schema.sql says
+Every evaluation is saved to the app's database, db/app.sqlite (SQLite in WAL mode; lab/evaluation/db_schema.sql says
 what each table holds): a result with its figures, daily series, walk-forward windows, trades and robustness
 measurements in one transaction, so a reader never sees half of one. What is judged from them (a check passed, the
 deflated Sharpe, whether a result is stale) is worked out when it is read, so a threshold can change without a re-run.
 Nothing a run makes is kept anywhere else: the pages read the database.
 
-Is the data whole: `python -m strategy_lab.data.check` (read-only, no network, about two minutes; `--out FILE.md`
+Is the data whole: `python -m lab.upkeep.check` (read-only, no network, about two minutes; `--out FILE.md`
 keeps the report). For every agreed list and research timeframe it counts, on the days the list holds each name:
 names held with no bars of that timeframe (a ranked list is ranked from what is stored, so another name would take
 the seat unseen; who the list holds is read from its daily ranking), series shorter than the vendor's history, holes
@@ -45,8 +59,8 @@ price with no volume for three days or more), and in the crypto lists names that
 token of gold or silver, a contract Binance does not class as a coin). Its exit status is 1 when a list has a
 problem.
 
-Fresh data: `python -m strategy_lab.data.refresh binance` (public endpoints) and
-`python -m strategy_lab.data.refresh twelvedata` (needs `TWELVEDATA_API_KEY`, `TWELVEDATA_REQUESTS_PER_MINUTE`
+Fresh data: `python -m lab.upkeep.refresh binance` (public endpoints) and
+`python -m lab.upkeep.refresh twelvedata` (needs `TWELVEDATA_API_KEY`, `TWELVEDATA_REQUESTS_PER_MINUTE`
 in `.env`). Always `--dry-run` first: it prints how many requests the refresh needs and makes none.
 Other data commands:
 * `refresh binance-gaps` — fills interior gaps of Binance series from the exchange; a gap the exchange has no
@@ -112,7 +126,7 @@ Other data commands:
 * `refresh twelvedata-first-bars` — the vendor's first hourly bar of every Twelve Data series of the agreed lists
   (data/reference/twelvedata_first_bars.csv, one request a symbol not yet in it): the data check's measure of a
   short hourly history;
-* `python -m strategy_lab.data.minute_refresh binance|forexite|twelvedata --dry-run` — the one-minute bars the engine
+* `python -m lab.upkeep.minute_refresh binance|forexite|twelvedata --dry-run` — the one-minute bars the engine
   walks intrabar exits through (`data.minutes`: memory-mapped arrays in data/store/<source>/1m, one copy for every
   process of a batch): the crypto lists' perps for the months each is held and the month after (Binance's public
   archive, a file a month in data/raw/binance/minutes), the FX majors since 2003 (Forexite's free files,
@@ -129,7 +143,7 @@ Other data commands:
   store does not have are left out. Forexite's, another feed, are kept month by month where their hours line up with
   the stored clock and their closes keep within 3 bp of one ratio to the stored ones at the median, and are put on the
   stored side of the quote by that ratio (its AUD/USD stands 2-4 bp above Dukascopy's bid through 2003-2005);
-* `python -m strategy_lab.data.spread_refresh exness|dukascopy|build --dry-run` — the spread a broker quoted on the
+* `python -m lab.upkeep.spread_refresh exness|dukascopy|build --dry-run` — the spread a broker quoted on the
   five spot quotes of commodities, hour by hour, which a fill on them pays (`data.spreads`, `engine.costs`): Exness's
   ticks (its Pro account: no commission, so the spread is the whole cost; a zip a quote and month in data/raw/exness,
   free and with no key: 618 months from 2015-08 for gold and silver, 2016-01 for platinum and palladium, 2019-02 for
@@ -140,11 +154,11 @@ Other data commands:
   (`refresh.EXNESS_QUOTES`): their mid's minutes, built once a month and kept in data/raw/exness/<symbol>/minutes,
   make its hours whenever its hourly series is written (`refresh twelvedata`) and its minutes (`minute_refresh
   twelvedata`);
-* `python -m strategy_lab.data.market_cap stocks|coins` — today's market capitalisations (Nasdaq's stock screener,
+* `python -m lab.data.market_cap stocks|coins` — today's market capitalisations (Nasdaq's stock screener,
   CoinGecko; one request each, no key) behind `us_stocks_mcapN` and `crypto_mcapN`;
-* `python -m strategy_lab.data.rates` — the 3-month T-bill rate (FRED DTB3; one request, no key) that idle cash earns
+* `python -m lab.data.rates` — the 3-month T-bill rate (FRED DTB3; one request, no key) that idle cash earns
   when a record is compared with buy-and-hold at equal risk;
-* `python -m strategy_lab.data.orderly markets|compare` — CoinIQ's market list (Orderly) and a per-coin check
+* `python -m lab.upkeep.orderly markets|compare` — CoinIQ's market list (Orderly) and a per-coin check
   that the Binance perp prints the same prices.
 
 ## Writing a strategy
@@ -152,8 +166,8 @@ Other data commands:
 * `@rule` — the function gets one instrument's bars (`open high low close volume dollar_volume`, indexed by bar
   close time) and returns a position in [-1, 1] per bar, decided at that bar's close; it must not write into those
   bars, which the grid's signal configurations share (tests/test_lookahead.py checks every rule). An indicator of
-  `strategy_lab.indicators` or a regime of `strategy_lab.regimes` asked for on the bars or their columns is worked out
-  once for all of them (`strategy_lab.shared`; on a series derived from the bars, once per call). Across a universe each
+  `lab.signals.indicators` or a regime of `lab.signals.regimes` asked for on the bars or their columns is worked out
+  once for all of them (`lab.signals.shared`; on a series derived from the bars, once per call). Across a universe each
   instrument gets an equal share of capital among the instruments in the universe at that bar. Grid key `slots` = k
   gives the book k slots of 1/k of capital instead: a trade takes a free slot on its first bar and keeps it, at that
   share, until it ends; a trade that finds every slot taken is not traded; of the trades starting on one bar the
@@ -250,7 +264,7 @@ Other data commands:
   entry or an exit (`vol_managed`, `vol_managed_har`, `market_regime`): on a list that changes its names are the
   list's members, a leaver sold at the re-pick and a newcomer bought at once, instead of a leaver keeping its seat
   until its trade ends.
-* `@rule(market=True)` — the rule reads its market's index besides its bars (`strategy_lab.market`): SPY's daily
+* `@rule(market=True)` — the rule reads its market's index besides its bars (`lab.data.market`): SPY's daily
   closes for stocks and ETFs, bitcoin's on spot for coins, each as a bar knows it (the last daily close stamped at or
   before the bar's close: a bar of a session's hours sees the day before's close until its own day has closed). Its
   positions are kept on disk under the index's bars as well as its own. Commodities and currency pairs have no such
@@ -259,7 +273,7 @@ Other data commands:
   `grade`, in proportion to how far above) and `regime_ema_trail` (a trend trade on each name under the same filter)
   run on the stock, ETF and crypto lists and their instruments alone (`runs.INDEXED_MARKETS`).
 * `@rule(grade=...)` — a model grades the rule's own trades before the universe's seats are given out
-  (`strategy_lab.trade_model`): `take` keeps the trades it gives a probability above the grid key `threshold` of
+  (`lab.engine.trade_model`): `take` keeps the trades it gives a probability above the grid key `threshold` of
   making money after costs, `size` scales each by 2p - 1. One model learns from every instrument of the run at once
   (a list's names pooled, an instrument alone from its own trades), refit every 3 months on the trades already closed.
   It is a random forest (LightGBM's random-forest mode) since 2026-09-30: against the boosted trees it had been, the
@@ -275,15 +289,15 @@ Other data commands:
   1d against +0.74%.
 * A bar an instrument missed (vendor gap, halt) is not a decision point for it: a rule keeps its last position,
   a panel strategy sees the instrument's last close.
-* Indicators: `strategy_lab.indicators` wraps TA-Lib (150+ functions: `ind.call("CCI", h, l, c, timeperiod=20)`).
+* Indicators: `lab.signals.indicators` wraps TA-Lib (150+ functions: `ind.call("CCI", h, l, c, timeperiod=20)`).
 * One strategy per file: `strategies/<name>.py` holds the strategy `<name>` alone, so that it can be read, or handed
   to another engine's developer, on its own; the building blocks several strategies share (`hold_between`,
-  `with_short`, `rebalanced`, `long_short`, `bars_in`) are in `strategy_lab.strategy`. Commands and scripts name a
+  `with_short`, `rebalanced`, `long_short`, `bars_in`) are in `lab.engine.strategy`. Commands and scripts name a
   strategy by its name.
 * Every strategy in `strategies/` is checked by `make test` for look-ahead: its positions must not change when the
   future is cut off.
 
-Run from the command line: `python -m strategy_lab run ema_trend tsmom -u etf_core crypto_top10 -t 1d 4h`.
+Run from the command line: `python -m lab run ema_trend tsmom -u etf_core crypto_top10 -t 1d 4h`.
 Universes: `etf_core`, `etf_topN` (the N most liquid of etf_core each month), `fx_majors`, `fx_all`, `us_stocks_topN`
 (S&P 500 members, top N by liquidity each month),
 `crypto_topN` (USD-M perps, top N by liquidity each month; not stablecoins, tokens of gold, index perps or TradFi contracts), `us_stocks_mcapN` (today's N largest S&P 500 members by
@@ -298,7 +312,7 @@ simulator fills at) — our `cme_futures` (the CME futures of gold, silver, plat
 their contracts joined; the desk's own CME market holds 19, five of them equity index futures) — or a single id like
 `td:SPY`, `perp:BTCUSDT`, `cme:GC`.
 
-The research runs on the lists of `strategy_lab.lists`, by market: stocks and crypto Top-3, Top-10, Top-50 and
+The research runs on the lists of `lab.data.lists`, by market: stocks and crypto Top-3, Top-10, Top-50 and
 Top-100 by liquidity (crypto's Top-3: BTC and ETH, which have not left it since 2021, and the third most traded coin),
 ETFs' Top-3 of the 34 by the same rule, re-picked monthly with a buffer on the daily bars whatever the timeframe, so a
 list holds the same names on 1h and 4h as on 1d (a session's intraday bars miss its auctions, a share of its volume
@@ -330,7 +344,7 @@ instrument's own buy-and-hold, cash for a currency pair or crude's spot quote; `
 today's members, each over its whole history (ranked on its daily bars whatever the timeframe, as its
 lists are: every timeframe tests the same names). `python scripts/per_asset.py` runs every rule strategy on the widest
 list of each market
-(`strategy_lab.lists.PER_ASSET`: today's 100 most liquid S&P 500 stocks, today's 100 most liquid Binance coins, the 34
+(`lab.data.lists.PER_ASSET`: today's 100 most liquid S&P 500 stocks, today's 100 most liquid Binance coins, the 34
 ETFs, FX majors, the five commodities' spot quotes and the six CME futures) on 1h/4h/1d — the narrower lists of a
 market are inside its widest one; Research shows them with Run on: Assets.
 
@@ -343,7 +357,7 @@ instrument alone (the rules and `ml_feature_search`) is a candidate with its own
 from the day the candidates have a year of records, the one with the best Sharpe on all the days before is held until
 the next choice (a candidate with a position on fewer than 60 of them is not chosen), and a switch pays the
 instrument's cost on the change of position. The stitched record is what choosing the best strategy would have earned.
-`python -m strategy_lab db pick` (the picks stage of a re-run with single assets) saves one record per instrument and
+`python -m lab db pick` (the picks stage of a re-run with single assets) saves one record per instrument and
 timeframe of the ML task's lists; singling out the best of them is a choice again, judged against the luck of their
 own tries (family picks).
 
@@ -351,10 +365,10 @@ own tries (family picks).
 symbol: LightGBM on every combination of five indicator families, the combination re-picked every 3
 months by walk-forward on the symbol's own past. `python scripts/per_asset.py --names ml_feature_search
 --universes us_stocks_mcap10 crypto_mcap10 fx_majors stockhunt_commodities stockhunt_etfs` runs it; `python
-scripts/product_protocol.py` with the same lists replays a 70/30 protocol on the same matrix (the combination with
+research/product_protocol.py` with the same lists replays a 70/30 protocol on the same matrix (the combination with
 the best Sharpe on the last 30% of the history, over the 30% and over the whole history) and writes
 reports/product_protocol.md: its figures next to what the walk-forward gets. A pick can also be checked on similar
-symbols; `python scripts/peer_check.py` measures that idea as a rule inside the
+symbols; `python research/peer_check.py` measures that idea as a rule inside the
 walk-forward (`walkforward.choose_with_peers`: a configuration must have beaten holding on at least half of the other
 names of the list over the window it is chosen on; on a currency pair, whose buy-and-hold is cash, made money) with
 and without it, and writes reports/peer_check.md.
@@ -368,7 +382,7 @@ and without it, and writes reports/peer_check.md.
   2026-09-27), the rolling year's Sharpe was lower on 61 and higher on 38 (median -0.04), the rolling three years'
   lower on 69 and higher on 27 (median -0.03); beyond noise (|t| >= 2) 2 higher and 4 lower, 0 and 3, about what
   luck gives in 99; lower for 14 and 15 of the 19 strategies; its choice changed a median 22 and 13 times where the
-  growing window's changed 6 (`python scripts/rolling_walkforward.py` -> reports/rolling_walkforward.md). This is the
+  growing window's changed 6 (`python research/rolling_walkforward.py` -> reports/rolling_walkforward.md). This is the
   number compared with the target. An instrument is judged once it has at least 6 months out-of-sample. A list is
   scored from the first day it holds at least half of its names (half of a top-N list's N, half of a fixed list): the
   S&P 500 lists from 1998-02 (the membership data begins in 1996, Sharadar's prices at the end of 1997), the 10 major
@@ -410,7 +424,7 @@ and without it, and writes reports/peer_check.md.
   monthly rate that takes the account from the record's start to its end over the record's length, a partial month at
   either end counted by its days (+100% then -50% is 0%, not the +25% of a plain mean; 1.5% a month is 19.6% a year),
   as the firm's research desk (ROI/yr) and ManifoldBT (CAGR) report returns.
-* **The market's index** (`server/market_index.py`) — beside buy & hold in a result's popup (the metrics' third
+* **The market's index** (`backend/market_index.py`) — beside buy & hold in a result's popup (the metrics' third
   column, a dotted line on its chart and on Research's): what a client could have bought instead, bought on the
   record's first day and held over the same days as buy & hold holds one instrument. A list's: SPY with its dividends
   for the stocks and the ETFs, BTC on Binance spot for crypto, gold's spot quote for the spot commodities, gold's joined
@@ -528,7 +542,7 @@ and without it, and writes reports/peer_check.md.
   0.47 on the 34 ETFs, a fixed list (3% below 0.05).
 * **Robustness** — the board's `robustness` column: the checks a result passes of those that apply to it (`7/9`;
   one that does not apply is left out, one whose record is too short to judge counts as not passed). They are
-  measured in the evaluation of a result that makes money out-of-sample (`strategy_lab.robustness`, on the
+  measured in the evaluation of a result that makes money out-of-sample (`lab.evaluation.robustness`, on the
   evaluation's own backtests) and judged when the board is built (`board.robustness`: the thresholds live there, so
   changing one needs no re-run); a result that loses money is not checked (—), nor given Monte Carlo and random
   timing. The checks, and where each comes from (the firm's research desk and engine, the Minerva tester, Build
@@ -584,11 +598,11 @@ and without it, and writes reports/peer_check.md.
   (run_job), shows its progress on the page and stops there at once: the evaluations running then start over when it
   resumes, everything finished stays saved, and resuming the same run does only what it had not done. Its log is
   logs/rerun_<id>.log. While it is on it keeps this Mac from sleeping (caffeinate; a closed lid still sleeps a laptop),
-  and a restart of the server does not touch it. The jobs spread over the cores (`--workers`, `strategy_lab.batch`): the
+  and a restart of the server does not touch it. The jobs spread over the cores (`--workers`, `lab.batch`): the
   longest first, by the seconds each took when last saved, and the jobs on one list and timeframe in pieces on one
   process, which loads the list once for them; ml_direction fits its models in the main process meanwhile. After the
-  jobs: the picks and the lists' figures (`python -m strategy_lab db lists`), both in the database; the server works
-  the luck bars out again once the run has ended, the lists' and the single assets' (`python -m strategy_lab db
+  jobs: the picks and the lists' figures (`python -m lab db lists`), both in the database; the server works
+  the luck bars out again once the run has ended, the lists' and the single assets' (`python -m lab db
   judge`). A run with single assets removes the kept runs of a strategy on each instrument alone that its plan no
   longer makes, within the lists, strategies and timeframes it covers (`runs.unplanned_alone`: the rules on a list
   whose instruments its market's widest list holds today, a strategy no longer run alone), as an instrument that
@@ -599,11 +613,11 @@ and without it, and writes reports/peer_check.md.
   their own.
 * **STALE** on the board — the result was produced by code that has changed since (every result keeps a hash of the
   engine and strategy source it ran on). The page shows it faded, tagged "older code".
-* The web UI (server/, ui/web): Research (a strategy on a list as one book, or on each asset alone) and a result's
-  popup read the database through the server (`/api/research/...`, typed from ui/web/openapi.json: `make api` after the
+* The web UI (backend/, frontend): Research (a strategy on a list as one book, or on each asset alone) and a result's
+  popup read the database through the server (`/api/research/...`, typed from frontend/openapi.json: `make api` after the
   server's answers change); every result saved, luck bar worked out or evaluation code edited reaches an open page
   within a second (server-sent events). Portfolios is a mockup, a page with no data behind it
-  (ui/mockup/portfolios.html), shown at /portfolios.
+  (mockup/portfolios.html), shown at /portfolios.
 
 ## Engine conventions
 
@@ -730,7 +744,7 @@ and without it, and writes reports/peer_check.md.
   the numpy, pandas and TA-Lib versions) and a hash of every field of every bar the rule is given: a change to either
   is a new entry, never a stale one. A version of the code that runs no more is never read again, and the whole
   directory can be deleted at any time: it costs only the rules' work again.
-* Work a grid's signal configurations repeat on an instrument's bars is done once for them (`strategy_lab.shared`):
+* Work a grid's signal configurations repeat on an instrument's bars is done once for them (`lab.signals.shared`):
   the indicators and regimes a rule asks for on the bars or their columns (calm_trend's 108 configurations take one
   volatility regime, three confirmations of it and six moving averages). Each configuration gets its own copy, and an
   input is recognised by what it is (the bars, a column of them, a result handed out and not changed since), never
@@ -775,7 +789,7 @@ and without it, and writes reports/peer_check.md.
   `stockhunt_stocks` in 1970 with 19 names (100 from 1996), `etf_core` and `stockhunt_etfs` in 1993 with SPY alone
   until 1998. A list is scored only from the first day it holds half
   of its names (see What the numbers mean), and the week-1 run takes the desk's lists from the desk's own daily start
-  (`strategy_lab.lists`: stocks 2003-01-02, coins 2020-08-01); elsewhere pass `start=` (`--start` on the command line).
+  (`lab.data.lists`: stocks 2003-01-02, coins 2020-08-01); elsewhere pass `start=` (`--start` on the command line).
 * The vendor's hourly US-equity bars before 2020-06-29 are not where their labels say, and are re-stamped
   (`refresh.td_equity_hourly_starts`, checked against the vendor's daily and 15-minute bars): in 2019 they cover
   09:30-10:30 ... 15:30-16:00 as today; from 2020 to 2020-06-26 they cover clock hours (09:30-10:00, 10:00-11:00 ...

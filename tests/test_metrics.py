@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from strategy_lab import metrics
+from lab.evaluation import metrics
 
 
 def _daily_from_months(monthly, start="2024-01-01"):
@@ -58,7 +58,7 @@ def test_a_month_without_a_position_is_neither_green_nor_red_for_a_strategy_but_
 
 
 def test_walk_forward_windows_grow_from_the_first_bar():
-    from strategy_lab import walkforward
+    from lab.evaluation import walkforward
     start, end = pd.Timestamp("2020-01-01", tz="UTC"), pd.Timestamp("2021-10-01", tz="UTC")
     fl = walkforward.folds(start, end, "365D", "91D")
     assert all(f.train_start == start for f in fl)
@@ -89,7 +89,7 @@ def test_the_sortino_ratio_divides_by_the_losses_root_mean_square_over_every_day
 
 
 def test_monte_carlo_scores_a_path_as_the_scorecard_does():
-    from strategy_lab import montecarlo
+    from lab.evaluation import montecarlo
     d = pd.Series(np.random.default_rng(6).normal(0.0006, 0.012, 800),
                   index=pd.date_range("2021-01-10", periods=800, freq="D", tz="UTC"))
     d.iloc[0] = -0.04                                   # its deepest fall starts from the capital

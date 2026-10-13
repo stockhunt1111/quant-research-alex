@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from strategy_lab import portfolio
+from lab import portfolio
 
 
 def _rets(n=600, seed=0):

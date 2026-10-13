@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from strategy_lab.strategy import bars_in, rebalanced, rule
+from lab.engine.strategy import bars_in, rebalanced, rule
 
 
 @rule(grid={"vol_months": [0.5, 1, 3], "target_vol": [0.10, 0.15, 0.20]}, exposure=True)

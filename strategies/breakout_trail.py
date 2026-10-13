@@ -16,8 +16,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from strategy_lab import indicators as ind
-from strategy_lab.strategy import hold_between, rule
+from lab.engine.strategy import hold_between, rule
+from lab.signals import indicators as ind
 
 
 @rule(grid={"n_in": [20, 55, 100], "n_out": [10, 20, 50], "trail_atr": [2.0, 3.0, 4.0], "trail_every": ["bar", "minute"],

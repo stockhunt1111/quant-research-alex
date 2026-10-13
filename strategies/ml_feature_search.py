@@ -18,8 +18,9 @@ import itertools
 import numpy as np
 import pandas as pd
 
-from strategy_lab import config, ml
-from strategy_lab.strategy import rule, with_short
+from lab.engine.strategy import rule, with_short
+from lab.foundation import config
+from lab.signals import ml
 
 HORIZON = 5
 SEED = config.SEED          # the model's random draws: the robustness check of other seeds varies it

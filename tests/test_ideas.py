@@ -2,9 +2,10 @@ import numpy as np
 import pandas as pd
 
 import strategies.ml_direction as ml
+from lab.data.bars import Panel
+from lab.evaluation import lookahead
+from lab.signals import regimes
 from strategies.big_move_follow import big_move_follow
-from strategy_lab import lookahead, regimes
-from strategy_lab.data.bars import Panel
 from tests.conftest import make_panel
 
 
@@ -46,7 +47,7 @@ def test_the_models_fitted_in_parallel_before_the_grid_give_the_same_positions()
 def _leaving_across_a_refit(bars: pd.DataFrame, held: pd.Series) -> int:
     """A bar to leave the list at while a trade is held that is still open at the next refit and ends before the one
     after: its seat is kept into a block of bars the list no longer holds the name for."""
-    from strategy_lab.ml import refit_rows
+    from lab.signals.ml import refit_rows
     starts = [t for t in refit_rows(bars.index) if t >= 200]
     for a, b in zip(starts[2:], starts[3:]):
         for k in range(a - 30, a):

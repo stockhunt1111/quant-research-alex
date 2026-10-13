@@ -1,8 +1,8 @@
 """Reference rule: simple and well known, it exercises the whole pipeline."""
 from __future__ import annotations
 
-from strategy_lab import indicators as ind
-from strategy_lab.strategy import rule, with_short
+from lab.engine.strategy import rule, with_short
+from lab.signals import indicators as ind
 
 
 @rule(grid={"fast": [10, 20, 50], "slow": [100, 200, 300], "long_only": [True, False]})

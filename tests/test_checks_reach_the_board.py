@@ -2,8 +2,8 @@
 not measured for ever."""
 import json
 
-from strategy_lab import board, db
-from strategy_lab import evaluate as ev
+from lab.evaluation import board, db
+from lab.evaluation import evaluate as ev
 from strategies.rsi2_connors import rsi2_connors
 from tests.conftest import rising_list_market
 

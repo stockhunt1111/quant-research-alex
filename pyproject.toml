@@ -23,12 +23,12 @@ dependencies = [
 
 [project.optional-dependencies]
 ml = ["scikit-learn==1.5.2", "lightgbm==4.7.0"]
-# the server of the web UI (server/): the research engine and its batches run without it
+# the server of the web UI (backend/): the research engine and its batches run without it
 web = ["fastapi==0.141.1", "uvicorn==0.54.0"]
 dev = ["pytest==9.1.1", "ruff==0.16.1", "httpx2==2.13.1"]
 
 [tool.setuptools.packages.find]
-include = ["strategy_lab*", "strategies*", "server*"]
+include = ["lab*", "strategies*", "backend*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -37,6 +37,9 @@ addopts = "-q"
 [tool.ruff]
 line-length = 120
 target-version = "py312"
+# the tests import the scripts and the research runs by name, as the package's own
+src = [".", "scripts", "research"]
 
 [tool.ruff.lint]
-select = ["F", "E9"]
+# pyflakes (unused and undefined names), syntax errors, imports in order
+select = ["F", "E9", "I"]

@@ -5,8 +5,8 @@ from __future__ import annotations
 
 import pandas as pd
 
-from strategy_lab import indicators as ind
-from strategy_lab.strategy import rule
+from lab.engine.strategy import rule
+from lab.signals import indicators as ind
 
 
 def _after_runs(side: pd.Series, k_in: int, k_out: int) -> pd.Series:

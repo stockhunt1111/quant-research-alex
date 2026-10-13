@@ -13,10 +13,10 @@ import pandas as pd
 import pytest
 from scipy import stats
 
-from strategy_lab import board, db, metrics
-from strategy_lab import evaluate as ev
-from strategy_lab.config import FIRM_TARGETS
-from strategy_lab.universes import Universe
+from lab.data.universes import Universe
+from lab.evaluation import board, db, metrics, walk
+from lab.evaluation import evaluate as ev
+from lab.foundation.config import FIRM_TARGETS
 from strategies.sma_cross import sma_cross
 from tests.conftest import make_panel
 
@@ -34,8 +34,8 @@ def conn(tmp_path, monkeypatch):
 
 def _evaluated(monkeypatch, strategy=sma_cross, name="us_stocks_top10", **kw):
     panel = make_panel(n=900, seed=3)
-    monkeypatch.setattr(ev, "resolve", lambda n, tf: Universe(n, list(panel.ids)))
-    monkeypatch.setattr(ev, "load_panel", lambda ids, tf, start=None, end=None, **k: panel)
+    monkeypatch.setattr(walk, "resolve", lambda n, tf: Universe(n, list(panel.ids)))
+    monkeypatch.setattr(walk, "load_panel", lambda ids, tf, start=None, end=None, **k: panel)
     return ev.evaluate(strategy, name, "1d", **kw)
 
 
@@ -44,7 +44,7 @@ def test_an_evaluation_saved_comes_back_as_it_was_computed(conn, monkeypatch):
     rid = db.result_id(conn, "sma_cross", "us_stocks_top10", "1d")
     row = conn.execute("SELECT * FROM result WHERE id = ?", (rid,)).fetchone()
     assert row["fill"] == "next_open" and row["seconds"] > 0 and json.loads(row["grid"]) == {
-        k: list(v) for k, v in sma_cross.grid_for(len(ev.load_panel(None, "1d").ids)).items()}
+        k: list(v) for k, v in sma_cross.grid_for(len(walk.load_panel(None, "1d").ids)).items()}
     got = db.figures(conn, rid)
     for k in db.CORE + db.TRADE_STATS + db.EXPOSURE:
         want = e.oos[k]
@@ -144,7 +144,8 @@ def test_a_series_is_kept_to_the_last_bit_and_a_day_missing_is_refused():
 
 def _write_from_a_process(path, k, ready):
     import numpy as np  # noqa: F401 - the spawned process imports what it needs
-    from strategy_lab import db as d
+
+    from lab.evaluation import db as d
     d.DB_PATH = Path(path)
     ready.wait()
     c = d.connect()                                  # every process opens the new file at once and brings its schema
@@ -172,7 +173,7 @@ def test_writers_in_many_processes_opening_a_new_file_at_once_all_get_their_resu
 
 
 def _open_new_files_at_once(paths, start, failures):
-    from strategy_lab import db as d
+    from lab.evaluation import db as d
     for p in paths:
         start.wait()                                     # every process opens the same new file at the same instant
         try:

@@ -7,8 +7,8 @@ trading days on every timeframe; the RSI and the exit's average count the timefr
 as the source describes it, parameters fixed a priori or on a small grid: here to be measured, not trusted."""
 from __future__ import annotations
 
-from strategy_lab import indicators as ind
-from strategy_lab.strategy import bars_in, hold_between, rule
+from lab.engine.strategy import bars_in, hold_between, rule
+from lab.signals import indicators as ind
 
 
 @rule(grid={"rsi_entry": [2.5, 5, 10, 15, 20], "slots": [None, 5, 10, 20]})

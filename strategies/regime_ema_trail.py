@@ -17,9 +17,9 @@ import numpy as np
 import pandas as pd
 from numba import njit
 
-from strategy_lab import indicators as ind
-from strategy_lab import market
-from strategy_lab.strategy import bars_in, rule, with_short
+from lab.data import market
+from lab.engine.strategy import bars_in, rule, with_short
+from lab.signals import indicators as ind
 
 
 @njit(cache=True)

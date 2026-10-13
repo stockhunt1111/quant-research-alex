@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from strategy_lab import walkforward as wf
+from lab.evaluation import walkforward as wf
 
 DAYS = pd.date_range("2020-01-01", periods=900, freq="D", tz="UTC")
 

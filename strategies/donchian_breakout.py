@@ -6,8 +6,8 @@ well; here long only: that short side, taken by the walk-forward on a list's pas
 long side alone on most lists and timeframes."""
 from __future__ import annotations
 
-from strategy_lab import indicators as ind
-from strategy_lab.strategy import hold_between, rule
+from lab.engine.strategy import hold_between, rule
+from lab.signals import indicators as ind
 
 
 @rule(grid={"n_in": [20, 55, 100], "n_out": [10, 20, 40], "stop_atr": [None, 2.0, 3.0], "slots": [None, 5, 10, 20]})

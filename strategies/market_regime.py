@@ -25,8 +25,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from strategy_lab import market
-from strategy_lab.strategy import rule
+from lab.data import market
+from lab.engine.strategy import rule
 
 FULL_DAYS, FLOOR_DAYS, FLOOR = 90, 270, 0.3     # decay: full size to 90 days into a trend, 30% from 270 days on
 VOL_DAYS = 30                                   # vol_parity: the volatilities over the last 30 days

@@ -1,5 +1,5 @@
 """One-off: the results saved as files under reports/ before the app's database, into it (db/app.sqlite), through the
-writer an evaluation uses (strategy_lab.db). Importing again replaces what it imported.
+writer an evaluation uses (lab.evaluation.db). Importing again replaces what it imported.
 
     python scripts/import_reports.py                       # reports/ of this checkout
     python scripts/import_reports.py --reports path/to/reports --only donchian_breakout --db /tmp/x.sqlite
@@ -21,9 +21,10 @@ import numpy as np
 import pandas as pd
 from pyarrow import csv as pa_csv
 
-from strategy_lab import db, log, metrics
-from strategy_lab.config import REPORTS_DIR
-from strategy_lab.strategy import load
+from lab.engine.strategy import load
+from lab.evaluation import db, metrics
+from lab.foundation import log
+from lab.foundation.config import REPORTS_DIR
 
 LOG = log.get("import_reports")
 TOLERANCE = 1e-9             # a card's buy-and-hold figures against the same figures of the series saved beside it

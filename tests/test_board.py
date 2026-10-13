@@ -2,9 +2,9 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
-from strategy_lab import board, db
-from strategy_lab import evaluate as ev
-from strategy_lab.universes import Universe
+from lab.data.universes import Universe
+from lab.evaluation import board, db, walk
+from lab.evaluation import evaluate as ev
 from strategies.ibs import ibs
 from strategies.sma_cross import sma_cross
 from tests.conftest import make_panel
@@ -12,8 +12,8 @@ from tests.conftest import make_panel
 
 def test_board_ranks_our_lists_and_counts_any_other_as_not_ranked(tmp_path, monkeypatch):
     panel = make_panel(n=900, seed=3)
-    monkeypatch.setattr(ev, "resolve", lambda name, tf: Universe(name, list(panel.ids)))
-    monkeypatch.setattr(ev, "load_panel", lambda ids, tf, start=None, end=None: panel)
+    monkeypatch.setattr(walk, "resolve", lambda name, tf: Universe(name, list(panel.ids)))
+    monkeypatch.setattr(walk, "load_panel", lambda ids, tf, start=None, end=None: panel)
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "app.sqlite")
     for strategy, universe in ((sma_cross, "us_stocks_top10"), (ibs, "stockhunt_stocks"),
                                (sma_cross, "stockhunt_stocks"), (sma_cross, "coiniq")):

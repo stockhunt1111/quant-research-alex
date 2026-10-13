@@ -3,8 +3,8 @@ only, paying the trade each switch causes."""
 import numpy as np
 import pandas as pd
 
-from strategy_lab import strategy_pick, walkforward
-from strategy_lab.config import WF_SCHEMES
+from lab.evaluation import strategy_pick, walkforward
+from lab.foundation.config import WF_SCHEMES
 
 DAYS = pd.date_range("2020-01-01", periods=4 * 365, freq="D", tz="UTC")
 

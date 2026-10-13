@@ -5,8 +5,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from strategy_lab.config import COSTS
-from strategy_lab.engine.hold import buy_and_hold, nothing_to_hold
+from lab.engine.hold import buy_and_hold, nothing_to_hold
+from lab.foundation.config import COSTS
 from tests.conftest import make_panel, quote_spreads
 
 EQUITY = (COSTS["us_equity"].commission_bps + COSTS["us_equity"].half_spread_bps) / 1e4
@@ -102,7 +102,7 @@ def test_a_perp_is_held_on_spot_terms():
 
 
 def test_a_comparison_buys_at_its_own_start_not_with_weights_drifted_since():
-    from strategy_lab.evaluate import _buy_and_hold
+    from lab.evaluation.evaluate import _buy_and_hold
     p = make_panel(ids=("td:AAA", "td:BBB"), seed=7)
     start = p.index[150]
     k = 151                                   # decided at the first bar from `start` on, bought at the next close
@@ -113,7 +113,7 @@ def test_a_comparison_buys_at_its_own_start_not_with_weights_drifted_since():
 def test_a_comparison_bought_on_a_day_earns_that_day_from_its_first_open():
     # a US listing's daily bars close at 21:00 UTC: the record's positions held on a day were decided at the close of
     # the day before, and the comparison is bought from that close too, at the day's first open
-    from strategy_lab.evaluate import _buy_and_hold
+    from lab.evaluation.evaluate import _buy_and_hold
     p = make_panel(ids=("td:AAA",), seed=9)
     k = 150
     day = p.index[k].normalize()                            # the UTC day bar k closes in
@@ -134,8 +134,8 @@ def test_a_dividend_is_reinvested_in_what_paid_it(tmp_path, monkeypatch):
 
 
 def test_a_perp_is_held_at_its_spot_pairs_prices_and_on_their_scale_before_the_pair_lists(tmp_path, monkeypatch):
-    from strategy_lab.data import bars, store
-    from strategy_lab.data.bars import FIELDS
+    from lab.data import bars, store
+    from lab.data.bars import FIELDS
     monkeypatch.setattr(store, "STORE_DIR", tmp_path)
     monkeypatch.setattr(bars, "STORE_DIR", tmp_path)
     p = make_panel(ids=("perp:1000XUSDT",), freq="h", n=300, seed=6)          # the perp quotes 1000 coins

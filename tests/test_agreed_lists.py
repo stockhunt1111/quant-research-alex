@@ -1,13 +1,16 @@
-"""Nothing runs on a list outside strategy_lab.lists unless the user asks for it (--outside-lists)."""
+"""Nothing runs on a list outside lab.data.lists unless the user asks for it (--outside-lists)."""
 import sys
 from pathlib import Path
 
 import pytest
 
-from strategy_lab import __main__ as cli
-from strategy_lab import db, lists, per_asset, runs
+from lab import __main__ as cli
+from lab import runs
+from lab.data import lists
+from lab.evaluation import db, per_asset
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "research"))
 import per_asset as per_asset_script  # noqa: E402
 import product_protocol  # noqa: E402
 
@@ -20,7 +23,7 @@ def test_the_command_line_refuses_a_list_outside_ours_even_the_desks_for_its_own
     monkeypatch.setattr(cli, "evaluate", _never)
     for argv in (["run", "sma_cross", "-u", "coiniq", "-t", "1d"],
                  ["run", "ibs", "-u", "stockhunt_stocks", "-t", "1d"]):
-        monkeypatch.setattr(sys, "argv", ["strategy_lab", *argv])
+        monkeypatch.setattr(sys, "argv", ["lab", *argv])
         with pytest.raises(SystemExit, match="--outside-lists"):
             cli.main()
 
@@ -30,7 +33,7 @@ def test_the_command_line_takes_our_lists_and_any_list_when_asked(monkeypatch):
     monkeypatch.setattr(cli, "evaluate", lambda s, u, tf, **k: ran.append((s.name, u)))
     for argv in (["run", "ibs", "-u", "us_stocks_top100", "-t", "1d"],
                  ["run", "ibs", "-u", "stockhunt_stocks", "-t", "1d", "--outside-lists"]):
-        monkeypatch.setattr(sys, "argv", ["strategy_lab", *argv])
+        monkeypatch.setattr(sys, "argv", ["lab", *argv])
         cli.main()
     assert ran == [("ibs", "us_stocks_top100"), ("ibs", "stockhunt_stocks")]
 
@@ -44,7 +47,8 @@ def test_the_per_instrument_batch_runs_only_the_widest_lists_and_the_ml_tasks(mo
     ran = []
     monkeypatch.setattr(per_asset, "evaluate", lambda s, u, tf: ran.append(u))
     monkeypatch.setattr(runs, "_covered", lambda inner, outer, tf: False)
-    from strategy_lab import catalog, strategy_pick      # the stages after the jobs read every list's bars and spreads
+    from lab import catalog
+    from lab.evaluation import strategy_pick  # the stages after the jobs read every list's bars and spreads
     monkeypatch.setattr(catalog, "refresh", lambda conn=None: None)
     monkeypatch.setattr(strategy_pick, "pick_all", lambda conn: None)
     monkeypatch.setattr(sys, "argv", ["per_asset.py", "--names", "ibs", "--universes", "crypto_mcap10", "--workers", "1"])

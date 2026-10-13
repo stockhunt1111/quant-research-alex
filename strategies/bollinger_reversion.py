@@ -4,8 +4,8 @@ a list's past, it did worse out of sample than the long side alone on most lists
 usually described, parameters fixed a priori or on a small grid: here to be measured, not trusted."""
 from __future__ import annotations
 
-from strategy_lab import indicators as ind
-from strategy_lab.strategy import hold_between, rule
+from lab.engine.strategy import hold_between, rule
+from lab.signals import indicators as ind
 
 
 @rule(grid={"n": [20], "k": [1.5, 1.75, 2.0, 2.25, 2.5], "slots": [None, 5, 10, 20]})

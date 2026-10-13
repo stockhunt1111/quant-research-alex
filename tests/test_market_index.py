@@ -7,12 +7,11 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from strategy_lab import db, lists, universes
-from strategy_lab.config import COSTS
-from strategy_lab.data import bars, store
-from strategy_lab.data.bars import FIELDS
-
-from server import market_index
+from backend import market_index
+from lab.data import bars, lists, store, universes
+from lab.data.bars import FIELDS
+from lab.evaluation import db
+from lab.foundation.config import COSTS
 from tests.conftest import make_panel
 
 EQUITY = (COSTS["us_equity"].commission_bps + COSTS["us_equity"].half_spread_bps) / 1e4
@@ -56,7 +55,7 @@ def test_an_instrument_alone_has_an_index_only_where_one_measures_its_own_market
                             (("td", "WTI/USD"), ("cme", "CL"), ("td", "XAU/USD"))),
                     reason="crude's quote, its future and gold's quote are not in this checkout's store")
 def test_what_stands_beside_crude_alone_moves_with_crude_and_gold_did_not(monkeypatch):
-    from strategy_lab.data import spreads
+    from lab.data import spreads
     monkeypatch.setattr(spreads, "STORE_DIR", store.STORE_DIR)          # the quotes are bought at their broker's spread
     days = pd.date_range("2016-01-01", "2026-08-31", freq="D", tz="UTC")
     close = store.read_bars("td", "1d", "WTI/USD", ["close"])["close"]          # buy & hold holds no crude

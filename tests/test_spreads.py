@@ -9,11 +9,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from strategy_lab.config import COSTS
-from strategy_lab.data import spread_refresh, spreads
-from strategy_lab.engine import backtest as bt
-from strategy_lab.engine import costs
-from strategy_lab.engine.trades import ledger
+from lab.data import spreads
+from lab.engine import backtest as bt
+from lab.engine import costs
+from lab.engine.trades import ledger
+from lab.foundation.config import COSTS
+from lab.upkeep import spread_refresh
 from tests.conftest import make_panel, quote_spreads
 from tests.test_engine import _random_target, _units_account
 

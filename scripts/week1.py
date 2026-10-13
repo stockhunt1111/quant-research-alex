@@ -1,4 +1,4 @@
-"""Every strategy on the lists and timeframes it applies to (strategy_lab.runs.LIST_RUNS), as one run.
+"""Every strategy on the lists and timeframes it applies to (lab.runs.LIST_RUNS), as one run.
 
     python scripts/week1.py                                   # everything
     python scripts/week1.py --only trend                      # strategies whose name contains "trend"
@@ -8,14 +8,16 @@
     python scripts/week1.py --skip-fresh                             # only jobs the current code has not produced
     python scripts/week1.py --workers 8                              # processes evaluating at once (default 10)
 
-A run like any other (strategy_lab.runs): it shows in the UI and stops and resumes there, and each evaluation is saved
+A run like any other (lab.runs): it shows in the UI and stops and resumes there, and each evaluation is saved
 to the app's database as it ends. `scripts/rerun.py` is the full re-run, the single assets included.
 """
 from __future__ import annotations
 
 import argparse
 
-from strategy_lab import db, log, runs
+from lab import runs
+from lab.evaluation import db
+from lab.foundation import log
 
 
 def main() -> None:

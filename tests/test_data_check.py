@@ -5,9 +5,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from strategy_lab import universes
-from strategy_lab.data import calendars as cal
-from strategy_lab.data import check, store
+from lab.data import calendars as cal
+from lab.data import store, universes
+from lab.upkeep import check
 
 COLS = ["open", "high", "low", "close", "volume", "dollar_volume"]
 

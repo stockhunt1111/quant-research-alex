@@ -1,6 +1,8 @@
 """A run fixes its jobs when it starts, stops at once when asked, and resumes where it stopped: the jobs done stay
 done, the ones cut off start over, whatever became fresh meanwhile."""
+import dataclasses
 import os
+import resource
 import shutil
 import signal
 import subprocess
@@ -8,13 +10,12 @@ import sys
 import time
 from pathlib import Path
 
-import dataclasses
-import resource
-
 import numpy as np
 import pytest
 
-from strategy_lab import db, lists, runs
+from lab import runs
+from lab.data import lists
+from lab.evaluation import db
 
 ONLY = {"strategies": ["sma_cross"], "lists": ["us_stocks_top10", "crypto_top10", "etf_core"], "timeframes": ["1d"]}
 
@@ -31,7 +32,8 @@ def conn(tmp_path, monkeypatch):
 @pytest.fixture(autouse=True)
 def later(monkeypatch):
     """The stages after the jobs, recorded rather than done: they read every result and every list's bars."""
-    from strategy_lab import catalog, strategy_pick
+    from lab import catalog
+    from lab.evaluation import strategy_pick
     done: list = []
     monkeypatch.setattr(catalog, "refresh", lambda conn=None: done.append(("figures",)))
     monkeypatch.setattr(strategy_pick, "pick_all", lambda conn: done.append(("picks",)))
@@ -155,7 +157,8 @@ def test_a_run_whose_process_is_gone_without_a_stop_is_interrupted_and_resumable
 SLOW_RUN = """
 import sys, time
 from pathlib import Path
-from strategy_lab import db, runs
+from lab import runs
+from lab.evaluation import db
 db.DB_PATH = Path(sys.argv[1])
 def job(j):
     runs._mark(j[0], "state = 'running', attempts = attempts + 1, started_at = ?", db.now())

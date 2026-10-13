@@ -5,8 +5,8 @@ coins does not hold. Written as the source describes it, parameters fixed a prio
 measured, not trusted."""
 from __future__ import annotations
 
-from strategy_lab.data import rates
-from strategy_lab.strategy import as_of, panel, rebalanced
+from lab.data import rates
+from lab.engine.strategy import as_of, panel, rebalanced
 
 
 @panel(grid={"months": [12], "top_k": [1, 2, 3, 4, 5], "rebalance": ["M"]})

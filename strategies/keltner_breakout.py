@@ -4,8 +4,8 @@ walk-forward on a list's past, it did worse out of sample than the long side alo
 Written as it is usually described, parameters fixed a priori or on a small grid: here to be measured, not trusted."""
 from __future__ import annotations
 
-from strategy_lab import indicators as ind
-from strategy_lab.strategy import hold_between, rule
+from lab.engine.strategy import hold_between, rule
+from lab.signals import indicators as ind
 
 
 @rule(grid={"n": [10, 20, 50], "k": [1.5, 2.0, 2.5], "slots": [None, 5, 10, 20]})

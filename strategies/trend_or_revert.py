@@ -3,9 +3,9 @@ only: its short side (a confirmed down-trend followed short, RSI(2) surges sold 
 walk-forward on a list's past, did worse out of sample than the long side alone on most lists and timeframes."""
 from __future__ import annotations
 
-from strategy_lab import indicators as ind
-from strategy_lab import regimes
-from strategy_lab.strategy import hold_between, rule
+from lab.engine.strategy import hold_between, rule
+from lab.signals import indicators as ind
+from lab.signals import regimes
 
 
 @rule(grid={"adx_threshold": [20, 25, 30], "k": [2, 3, 5], "rsi_entry": [20, 30, 40]})

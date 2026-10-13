@@ -1,8 +1,8 @@
 import numpy as np
 import pandas as pd
 
-from strategy_lab import metrics, significance
-from strategy_lab.engine import backtest as bt
+from lab.engine import backtest as bt
+from lab.evaluation import metrics, significance
 from strategies.ibs_reversion import ibs_reversion
 from tests.conftest import make_panel
 

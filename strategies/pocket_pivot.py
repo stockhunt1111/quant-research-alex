@@ -15,8 +15,8 @@ import numpy as np
 import pandas as pd
 from numba import njit
 
-from strategy_lab import indicators as ind
-from strategy_lab.strategy import bars_in, rule, with_short
+from lab.engine.strategy import bars_in, rule, with_short
+from lab.signals import indicators as ind
 
 FAST_DAYS, SLOW_DAYS = 10, 50       # the averages a pocket pivot closes above
 CLOSES_OUT = 2                      # the closes below the exponential average since the entry that end the trade

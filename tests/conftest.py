@@ -7,43 +7,43 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from strategy_lab.data.bars import FIELDS, Panel
-from strategy_lab.data.instruments import parse
+from lab.data.bars import FIELDS, Panel
+from lab.data.instruments import parse
+from lab.evaluation import walk
 
 
 @pytest.fixture(autouse=True)
 def _no_list_kept_from_another_test():
-    from strategy_lab import evaluate
-    evaluate._LOADED.clear()
-    evaluate._SEATING.clear()
-    evaluate._DAILY_SEATING.clear()
+    walk._LOADED.clear()
+    walk._SEATING.clear()
+    walk._DAILY_SEATING.clear()
 
 
 @pytest.fixture(autouse=True)
 def _positions_kept_apart(tmp_path, monkeypatch):
     """A test's rules keep their positions in the test's own directory, never in data/cache."""
-    from strategy_lab import strategy
+    from lab.engine import strategy
     monkeypatch.setattr(strategy, "KEPT_DIR", tmp_path / "positions")
 
 
 @pytest.fixture(autouse=True)
 def _minutes_kept_apart(tmp_path, monkeypatch):
     """A test's one-minute bars live in the test's own directory, never in data/store."""
-    from strategy_lab.data import minutes
+    from lab.data import minutes
     monkeypatch.setattr(minutes, "ROOT", tmp_path / "store")
 
 
 @pytest.fixture(autouse=True)
 def _spreads_kept_apart(tmp_path, monkeypatch):
     """A test's quoted spreads live in the test's own directory, never in data/store."""
-    from strategy_lab.data import spreads
+    from lab.data import spreads
     monkeypatch.setattr(spreads, "STORE_DIR", tmp_path / "store")
 
 
 def quote_spreads(instrument_ids, hours: pd.DatetimeIndex, opening=0.2, closing=None):
     """Spot quotes' hours of spreads where the engine reads them (`data.spreads`): at each hour's first quote `opening`
     and at its last `closing` (the same when not given), a number or one per hour, stamped at the hours' closes."""
-    from strategy_lab.data import spreads
+    from lab.data import spreads
     frame = pd.DataFrame({"open": opening, "close": opening if closing is None else closing},
                          index=pd.DatetimeIndex(hours, name="close_time"))
     for i in instrument_ids:
@@ -57,7 +57,7 @@ CASH_RATE = 0.04              # the T-bill rate in tests, a year: steady, so a t
 
 @pytest.fixture(autouse=True)
 def _steady_cash_rate(monkeypatch):
-    from strategy_lab.data import rates
+    from lab.data import rates
     days = pd.date_range("1990-01-01", "2040-12-31", freq="D", tz="UTC")
     monkeypatch.setattr(rates, "daily_rate", lambda: pd.Series(CASH_RATE / 365.0, index=days))
 
@@ -82,7 +82,7 @@ MARKET_INDEX = market_index()
 @pytest.fixture(autouse=True)
 def _market_index_in_memory(monkeypatch):
     """A rule reading its market reads a synthetic index (`market_index`), never data/store."""
-    from strategy_lab import market
+    from lab.data import market
     monkeypatch.setattr(market, "_index_closes", lambda index_id: (0, MARKET_INDEX, "synthetic"))
 
 
@@ -106,7 +106,7 @@ def store_of(panel: Panel):
 def top_lists(panel: Panel):
     """`resolve` for lists named <anything>_top<N> on a synthetic panel: its N most liquid instruments, re-picked
     monthly, as a stock or crypto Top-N list is."""
-    from strategy_lab.universes import Universe, top_liquid
+    from lab.data.universes import Universe, top_liquid
 
     def resolve(name, timeframe):
         n = int(name.rsplit("_top", 1)[1])
@@ -117,16 +117,15 @@ def top_lists(panel: Panel):
 def rising_list_market(monkeypatch, n=700, seed=11, names=18) -> Panel:
     """A rising market of `names` instruments behind every Top-N list (strategies checked for robustness make money on
     it: a losing one is not checked), their liquidity ranks shifting slowly: Top-5, Top-10 and Top-15 differ."""
-    from strategy_lab import evaluate
     p = make_panel(ids=tuple(f"td:S{k:02d}" for k in range(names)), n=n, seed=seed)
     rise = np.exp(0.0008 * np.arange(n))[:, None]
     for f in ("open", "high", "low", "close", "dollar_volume"):
         setattr(p, f, getattr(p, f) * rise)
     for k in range(names):
         p.dollar_volume.iloc[:, k] *= 1 + (names - k) / 4
-    monkeypatch.setattr(evaluate, "resolve", top_lists(p))
-    monkeypatch.setattr(evaluate, "load_panel", store_of(p))
-    monkeypatch.setattr(evaluate, "stored_version", lambda ids, tf: 1)
+    monkeypatch.setattr(walk, "resolve", top_lists(p))
+    monkeypatch.setattr(walk, "load_panel", store_of(p))
+    monkeypatch.setattr(walk, "stored_version", lambda ids, tf: 1)
     return p
 
 

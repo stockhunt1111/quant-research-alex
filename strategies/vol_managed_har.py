@@ -2,7 +2,7 @@
 as a model forecasts it instead of the variance of the month just past. The model is F. Corsi's heterogeneous
 autoregressive model of realized volatility (HAR, "A Simple Approximate Long-Memory Model of Realized Volatility",
 2009): an ordinary least squares of the coming days' mean squared daily return on the day's squared return and the
-week's and the month's means. It is refit on the walk-forward calendar (`strategy_lab.ml.refit_rows`) on the days whose
+week's and the month's means. It is refit on the walk-forward calendar (`lab.signals.ml.refit_rows`) on the days whose
 coming days had passed. Volatility clusters but also reverts to its mean, which the realized variance of one month does
 not know: after a calm month it sizes up less, after a turbulent one it sizes down less. Once a month, hold
 target_vol^2 / the forecast annualised variance, capped at the whole capital, on the instrument's daily returns
@@ -18,8 +18,10 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from strategy_lab import config, market, ml
-from strategy_lab.strategy import rebalanced, rule
+from lab.data import market
+from lab.engine.strategy import rebalanced, rule
+from lab.foundation import config
+from lab.signals import ml
 
 MIN_DAYS = 120                  # the fewest known days a fit learns from
 FLOOR = 1e-10                   # a forecast variance never taken below this (a least squares can go under zero)

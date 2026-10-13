@@ -6,9 +6,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from strategy_lab import config
-from strategy_lab.data import bars, refresh, store
-from strategy_lab.data import calendars as cal
+from lab.data import bars, store
+from lab.data import calendars as cal
+from lab.foundation import config
+from lab.upkeep import refresh, vendors
 
 
 class _Resp:
@@ -40,22 +41,22 @@ class _Session:
 def _isolated(tmp_path, monkeypatch):
     monkeypatch.setattr(store, "STORE_DIR", tmp_path / "store")
     monkeypatch.setattr(bars, "STORE_DIR", tmp_path / "store")     # where a backtest reads funding from
-    monkeypatch.setattr(refresh, "LOGS_DIR", tmp_path / "logs")
+    monkeypatch.setattr(vendors, "LOGS_DIR", tmp_path / "logs")
     monkeypatch.setattr(config, "REFERENCE_DIR", tmp_path / "reference")      # the saved contract list
     monkeypatch.setattr(refresh, "env", lambda k: {"TWELVEDATA_API_KEY": "k", "TWELVEDATA_REQUESTS_PER_MINUTE": "1000"}.get(k))
 
 
 def test_ceiling_stops_the_run():
-    b = refresh.Budget("x", per_minute=None, max_requests=2)
+    b = vendors.Budget("x", per_minute=None, max_requests=2)
     b.acquire()
     b.acquire()
-    with pytest.raises(refresh.BudgetExceeded):
+    with pytest.raises(vendors.BudgetExceeded):
         b.acquire()
 
 
 def test_twelvedata_429_stops_empty_is_empty_non_json_is_reported(tmp_path):
-    b = refresh.Budget("twelvedata", per_minute=None, max_requests=None)
-    with pytest.raises(refresh.RateLimited):
+    b = vendors.Budget("twelvedata", per_minute=None, max_requests=None)
+    with pytest.raises(vendors.RateLimited):
         refresh._td_get(_Session([_Resp(429, {"status": "error", "code": 429, "message": "limit"})]), {}, b, {})
     assert refresh._td_get(_Session([_Resp(200, {"status": "error", "code": 400, "message": "No data is available on the specified dates"})]), {}, b, {}) == []
     with pytest.raises(RuntimeError, match="twelvedata 502"):
@@ -65,8 +66,8 @@ def test_twelvedata_429_stops_empty_is_empty_non_json_is_reported(tmp_path):
 
 
 def test_binance_429_stops():
-    b = refresh.Budget("binance", per_minute=None, max_requests=None)
-    with pytest.raises(refresh.RateLimited):
+    b = vendors.Budget("binance", per_minute=None, max_requests=None)
+    with pytest.raises(vendors.RateLimited):
         refresh._binance_get(_Session([_Resp(429, [])]), "https://x/klines", {}, b, {})
 
 
@@ -153,7 +154,8 @@ def _exness_month(tmp_path, monkeypatch, symbol: str, mids: pd.Series) -> None:
     close, the first 0.1% under the mid, the second at it."""
     import io
     import zipfile
-    from strategy_lab.data import spread_refresh
+
+    from lab.upkeep import spread_refresh
     monkeypatch.setattr(spread_refresh, "EXNESS_DIR", tmp_path / "exness")
     rows = ['"Exness","Symbol","Timestamp","Bid","Ask"']
     for t, m in mids.items():
@@ -206,7 +208,8 @@ def test_crudes_hours_are_its_brokers_where_it_quotes_its_holes_and_short_days_i
     refresh._hourly_written("WTI/USD")
     assert all(store.read_bars("td", tf, "WTI/USD").equals(v) for tf, v in again.items())
     # its minutes, which the exits are walked through, are the broker's too: they make every hour of the broker's
-    from strategy_lab.data import minute_refresh, minutes
+    from lab.data import minutes
+    from lab.upkeep import minute_refresh
     monkeypatch.setattr(minute_refresh, "TD_RAW", tmp_path / "td_minutes")
     rep = minute_refresh.store_twelvedata({"td:WTI/USD": []})["td:WTI/USD"]
     assert rep == {"rows": 2 * len(quoted) + 4, "hours_on_own_prices": 0, "hours_without_minutes": 4}   # the hole's
@@ -237,7 +240,7 @@ def test_a_metals_hours_that_are_not_the_markets_carry_its_brokers_returns_on_th
 
 
 def test_crudes_refresh_fetches_its_brokers_ticks_and_spreads_before_it_writes_the_vendors_hours(monkeypatch):
-    from strategy_lab.data import spread_refresh
+    from lab.upkeep import spread_refresh
     # the stored hours are Exness's: the vendor's disagree on the overlap, which is no restatement to fetch it all for
     store.write_bars("td", "1h", "WTI/USD", _vendor_bars(_hours("2026-08-03 00:00", "2026-08-03 05:00"), 69.0))
     tail = _td_values([f"2026-08-03 {h:02d}:00:00" for h in range(4, 9)], [70.0, 70.0, 70.5, 71.0, 71.5])
@@ -285,7 +288,7 @@ def test_a_commodity_hour_is_held_to_its_days_bar_and_a_day_short_at_its_end_kee
 
 def _next_session() -> str:
     """The next NYSE session after today: its bar cannot have closed yet."""
-    from strategy_lab.data import calendars as cal
+    from lab.data import calendars as cal
     today = pd.Timestamp.now(tz="America/New_York").tz_localize(None).normalize()
     sched = cal.nyse_sessions(pd.Timestamp(today + pd.Timedelta(days=1), tz="UTC"), pd.Timestamp(today + pd.Timedelta(days=12), tz="UTC"))
     return pd.DatetimeIndex(sched.index)[0].strftime("%Y-%m-%d")
@@ -336,7 +339,7 @@ def test_a_full_refetch_pages_backwards_to_the_start_of_the_history(monkeypatch)
     vendor = _Vendor(dates, [float(k) for k in range(1, 8)])
     monkeypatch.setattr(refresh, "TD_PAGE", 3)
     monkeypatch.setattr(refresh, "TD_HISTORY_START", {**refresh.TD_HISTORY_START, "1d": "2026-07-01"})
-    bars = refresh._td_full(vendor, "ACME", "1d", refresh.Budget("x", None, None), pd.Timestamp.now(tz="UTC"))
+    bars = refresh._td_full(vendor, "ACME", "1d", vendors.Budget("x", None, None), pd.Timestamp.now(tz="UTC"))
     assert list(bars["close"]) == [float(k) for k in range(1, 8)] and len(vendor.calls) == 3
 
 
@@ -488,7 +491,7 @@ def test_the_off_grid_bar_of_2020_06_26_is_dropped_and_a_clock_hour_session_spli
     bars, _ = _hourly_by_day()
     day = bars[bars.index.tz_convert("America/New_York").strftime("%Y-%m-%d") == "2020-06-26"]
     assert "15:30" not in [_ny(t).strftime("%H:%M") for t in day.index]
-    from strategy_lab.data import resample
+    from lab.data import resample
     clock = bars[bars.index.tz_convert("America/New_York").strftime("%Y-%m-%d") == "2020-03-16"]
     h4 = resample.equity_4h_from_1h(clock)
     assert [_ny(t).strftime("%H:%M") for t in h4.index] == ["13:00", "16:00"]
@@ -580,7 +583,7 @@ def test_earlier_history_is_taken_only_back_to_its_last_hole(monkeypatch):
 
 
 def _sessions(n, start="2024-01-02"):
-    from strategy_lab.data import calendars as cal
+    from lab.data import calendars as cal
     sched = cal.nyse_sessions(pd.Timestamp(start, tz="UTC"), pd.Timestamp(start, tz="UTC") + pd.Timedelta(days=2 * n))
     return pd.DatetimeIndex(sched["market_close"].iloc[:n]).tz_convert("UTC")
 
@@ -822,14 +825,14 @@ def _bi5(records):
 
 def test_a_dukascopy_month_is_read_from_its_bid_candles_and_an_hour_without_ticks_is_no_bar():
     month = pd.Timestamp("2020-01-01", tz="UTC")
-    got = refresh.dukascopy_hours(_bi5([(3600, 110000, 110010, 109990, 110020, 5.0), (7200, 1, 1, 1, 1, 0.0)]), month)
+    got = vendors.dukascopy_hours(_bi5([(3600, 110000, 110010, 109990, 110020, 5.0), (7200, 1, 1, 1, 1, 0.0)]), month)
     assert list(got.index) == [month + pd.Timedelta(hours=1)]                               # stamped at its start
     assert got.iloc[0][["open", "high", "low", "close"]].tolist() == [110000, 110020, 109990, 110010]
 
 
 def test_an_fx_pair_is_extended_back_from_dukascopy_only_when_its_closes_match_the_vendors(monkeypatch, tmp_path):
     monkeypatch.setattr(refresh, "DUKASCOPY_FIRST_YEAR", 2020)
-    monkeypatch.setattr(refresh, "DUKASCOPY_DIR", tmp_path / "dukascopy")
+    monkeypatch.setattr(vendors, "DUKASCOPY_DIR", tmp_path / "dukascopy")
     monkeypatch.setattr(refresh.time, "sleep", lambda s: None)
     closes = pd.date_range("2020-02-03 11:00", periods=3, freq="h", tz="UTC")               # the vendor's first hours
     for pair in ("EUR/USD", "GBP/USD"):
@@ -866,7 +869,7 @@ def test_an_fx_pair_is_extended_back_from_dukascopy_only_when_its_closes_match_t
 def test_dukascopy_is_matched_on_the_mid_of_its_quote_and_an_extended_series_is_left_as_it_is(monkeypatch, tmp_path):
     monkeypatch.setattr(refresh, "DUKASCOPY_FIRST_YEAR", 2020)
     monkeypatch.setattr(refresh, "DUKASCOPY_FIRST_MONTH", {})
-    monkeypatch.setattr(refresh, "DUKASCOPY_DIR", tmp_path / "dukascopy")
+    monkeypatch.setattr(vendors, "DUKASCOPY_DIR", tmp_path / "dukascopy")
     monkeypatch.setattr(refresh.time, "sleep", lambda s: None)
     closes = pd.date_range("2020-02-03 11:00", periods=3, freq="h", tz="UTC")
     store.write_bars("td", "1h", "XAG/USD", _hourly_bars(closes, price=17.0))
@@ -900,7 +903,7 @@ def _sharadar_zip(path, name, frame):
 
 
 def test_sharadar_membership_spans_pair_additions_and_removals(monkeypatch, tmp_path):
-    from strategy_lab.data import sharadar
+    from lab.data import sharadar
     monkeypatch.setattr(sharadar, "DIR", tmp_path)
     rows = [("1957-03-04", "added", "OLD1"), ("2008-12-31", "removed", "OLD1"),            # in, then out
             ("2001-11-30", "removed", "ENRNQ"),                                  # its addition missing from the table
@@ -914,7 +917,7 @@ def test_sharadar_membership_spans_pair_additions_and_removals(monkeypatch, tmp_
 
 
 def test_sharadar_bars_are_stamped_at_the_nyse_close_and_a_spin_off_is_paid_like_a_dividend(monkeypatch, tmp_path):
-    from strategy_lab.data import sharadar
+    from lab.data import sharadar
     monkeypatch.setattr(sharadar, "DIR", tmp_path)
     monkeypatch.setattr(refresh, "SHARADAR_DIR", tmp_path)
     monkeypatch.setattr(bars, "STORE_DIR", tmp_path / "store")
@@ -1000,7 +1003,7 @@ def test_hourly_bars_from_the_minutes_of_every_venue_sit_on_the_stores_grid_with
 
 
 def test_a_securitys_traded_tickers_come_from_its_ticker_changes(monkeypatch, tmp_path):
-    from strategy_lab.data import sharadar
+    from lab.data import sharadar
     monkeypatch.setattr(sharadar, "DIR", tmp_path)
     _sharadar_zip(tmp_path / "actions.zip", "actions", pd.DataFrame(
         [("2016-09-13", "tickerchangefrom", "INFO1", "MRKT"), ("2022-02-25", "tickerchangefrom", "INFO1", "INFO"),
@@ -1014,7 +1017,7 @@ def test_a_securitys_traded_tickers_come_from_its_ticker_changes(monkeypatch, tm
 
 
 def _databento_dirs(monkeypatch, tmp_path):
-    from strategy_lab.data import sharadar
+    from lab.data import sharadar
     monkeypatch.setattr(sharadar, "DIR", tmp_path / "sharadar")
     monkeypatch.setattr(refresh, "DATABENTO_DIR", tmp_path / "databento")
     monkeypatch.setattr(refresh, "DATABENTO_VENUES", ("XNAS.ITCH", "XNYS.PILLAR"))
@@ -1159,7 +1162,7 @@ def test_databento_sessions_fill_only_what_the_hourly_bars_lack_on_the_daily_spl
 
 def test_an_fx_hole_is_filled_from_the_mid_of_dukascopys_quote_and_a_metals_daily_pause_is_no_hole(monkeypatch,
                                                                                                    tmp_path):
-    monkeypatch.setattr(refresh, "DUKASCOPY_DIR", tmp_path / "dukascopy")
+    monkeypatch.setattr(vendors, "DUKASCOPY_DIR", tmp_path / "dukascopy")
     monkeypatch.setattr(refresh, "REFERENCE_DIR", tmp_path / "reference")
     monkeypatch.setattr(refresh.time, "sleep", lambda s: None)
     (tmp_path / "reference").mkdir()
@@ -1272,7 +1275,7 @@ def test_an_hourly_session_is_made_the_parts_of_its_daily_bar():
 
 def test_a_reviewed_sharadar_split_row_a_day_off_is_put_on_the_adjusted_basis_and_a_new_one_is_named(monkeypatch,
                                                                                                      tmp_path, caplog):
-    from strategy_lab.data import sharadar
+    from lab.data import sharadar
     monkeypatch.setattr(sharadar, "DIR", tmp_path)
     _sharadar_zip(tmp_path / "actions.zip", "actions", pd.DataFrame(
         [("2018-02-28", "split", "BF.B", 1.25), ("2020-01-02", "split", "XYZ", 2.0)],
@@ -1365,7 +1368,7 @@ def test_dukascopys_first_months_are_put_an_hour_earlier_and_its_mixed_week_left
     """Dukascopy stamped its first months of the pairs an hour late (the US payrolls of June 2003 in its hour closing at
     14:00, not 13:00): those bars move an hour earlier; the week whose hours are late and on time in turn is left out,
     and later bars stay where they are."""
-    from strategy_lab.data.refresh import dukascopy_on_utc
+    from lab.upkeep.refresh import dukascopy_on_utc
     stamps = pd.DatetimeIndex(["2003-06-06 12:00", "2003-06-06 13:00", "2003-07-29 12:00", "2003-08-04 12:00"], tz="UTC")
     raw = pd.DataFrame({"open": [1.0, 2.0, 3.0, 4.0]}, index=stamps)
     out = dukascopy_on_utc("EUR/USD", raw)

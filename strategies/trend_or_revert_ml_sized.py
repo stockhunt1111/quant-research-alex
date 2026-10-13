@@ -1,14 +1,14 @@
 """The regime switch (strategies.trend_or_revert) with each trade sized by a model: the switch says when, a model
 trained on its own past trades says how much, 2p - 1 of the position for a probability p of making money, nothing
-below one half (strategy_lab.trade_model, `size`). The sizing form of machine learning that only grades a rule's
+below one half (lab.engine.trade_model, `size`). The sizing form of machine learning that only grades a rule's
 trades; strategies.trend_or_revert_ml_filter is the filter form. On a list the model learns from the
 trades of every name in it; on one instrument alone, from that instrument's."""
 from __future__ import annotations
 
-from strategy_lab import indicators as ind
-from strategy_lab import regimes
-from strategy_lab import trade_model
-from strategy_lab.strategy import hold_between, rule
+from lab.engine import trade_model
+from lab.engine.strategy import hold_between, rule
+from lab.signals import indicators as ind
+from lab.signals import regimes
 
 
 @rule(grid={"adx_threshold": [20, 25, 30], "k": [2, 3, 5], "rsi_entry": [20, 30, 40]}, grade=trade_model.size)
