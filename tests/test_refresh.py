@@ -1378,3 +1378,25 @@ def test_dukascopys_first_months_are_put_an_hour_earlier_and_its_mixed_week_left
     assert list(gold.index) == list(pd.DatetimeIndex(["2003-06-06 11:00", "2003-06-06 12:00", "2003-07-29 11:00",
                                                       "2003-08-04 12:00"], tz="UTC"))
     assert dukascopy_on_utc("AUD/USD", raw).index.equals(stamps)     # its history begins in 2003-08
+
+
+def test_a_refresh_is_refused_while_its_downloads_are_kept_on_the_research_server(tmp_path, monkeypatch):
+    """Each refresh command (refresh, minute_refresh, spread_refresh) stops before any request while the raw folder's
+    ARCHIVED.json names downloads kept on the research server: without them it would fetch them all again."""
+    import sys
+
+    from lab.upkeep import minute_refresh, spread_refresh
+
+    monkeypatch.setattr(vendors, "RAW_DIR", tmp_path)
+    (tmp_path / "ARCHIVED.json").write_text(json.dumps({"host": "research-server", "entries": {
+        "databento": {"bytes": 1}, "binance": {"bytes": 1}}}))
+    for module, argv in ((refresh, ["refresh", "binance", "--dry-run"]),
+                         (minute_refresh, ["minute_refresh", "forexite", "--dry-run"]),
+                         (spread_refresh, ["spread_refresh", "exness", "--dry-run"])):
+        monkeypatch.setattr(sys, "argv", argv)
+        with pytest.raises(SystemExit) as refused:
+            module.main()
+        assert "binance, databento of" in str(refused.value) and "measurements restore" in str(refused.value), \
+            module.__name__
+    (tmp_path / "ARCHIVED.json").unlink()
+    assert vendors.kept_away() == []

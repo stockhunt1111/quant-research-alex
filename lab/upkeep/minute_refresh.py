@@ -38,7 +38,7 @@ from lab.data.universes import FX_MAJORS
 from lab.evaluation import walk
 from lab.foundation import log
 from lab.foundation.config import DATA_DIR, env
-from lab.upkeep import refresh
+from lab.upkeep import refresh, vendors
 from lab.upkeep.refresh import ARCHIVE, EXNESS_QUOTES, FOREXITE_DIR, FOREXITE_MATCH_BP, FOREXITE_ZONE
 from lab.upkeep.spread_refresh import exness_mid_minutes
 from lab.upkeep.vendors import Budget, BudgetExceeded, RateLimited, _ledger
@@ -482,6 +482,7 @@ def main() -> None:
     ap.add_argument("--workers", type=int, default=12, help="twelvedata: months fetched at once (an answer of 5000 "
                     "minutes takes the vendor 1-4 seconds; the requests a minute `.env` allows hold them all)")
     args = ap.parse_args()
+    vendors.refused_while_kept_away()
     log.setup(f"minute_refresh_{args.source}")
     if args.source == "binance":
         months = crypto_months(args.universes)

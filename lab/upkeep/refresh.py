@@ -56,7 +56,7 @@ from lab.data.instruments import COMMODITIES, parse
 from lab.evaluation import walk
 from lab.foundation import config, log
 from lab.foundation.config import DATA_DIR, REFERENCE_DIR, env
-from lab.upkeep import spread_refresh
+from lab.upkeep import spread_refresh, vendors
 from lab.upkeep.vendors import (
     Budget,
     RateLimited,
@@ -2880,6 +2880,7 @@ def main() -> None:
     ap.add_argument("--universes", nargs="*", help="twelvedata-extend, twelvedata-first-bars: the TwelveData series "
                     "these universes use (twelvedata-first-bars: the hourly series of every agreed list by default)")
     args = ap.parse_args()
+    vendors.refused_while_kept_away()
     log.setup(f"refresh_{args.vendor}")
     if args.vendor == "binance":
         rep = refresh_binance(args.markets, args.timeframes, args.dry_run, args.max_requests, args.symbols)

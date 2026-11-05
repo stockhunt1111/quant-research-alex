@@ -26,6 +26,26 @@ DUKASCOPY = "https://datafeed.dukascopy.com/datafeed"         # its public hourl
 DUKASCOPY_NAMES = {"XAU/USD": "XAUUSD", "XAG/USD": "XAGUSD", "XPT/USD": "XPTCMDUSD", "XPD/USD": "XPDCMDUSD",
                    "WTI/USD": "LIGHTCMDUSD"}
 
+RAW_DIR = DATA_DIR / "raw"                                     # the vendors' downloads, each in its folder
+
+
+def kept_away(raw=None) -> list[str]:
+    """The vendors' folders of `raw` kept on the research server and not here: those its ARCHIVED.json names (the
+    engine's research/measurements.py sends them, checked, and brings them back)."""
+    path = (raw or RAW_DIR) / "ARCHIVED.json"
+    return sorted(json.loads(path.read_text()).get("entries") or {}) if path.exists() else []
+
+
+def refused_while_kept_away(raw=None) -> None:
+    """A refresh refused while downloads it resumes from are kept on the research server: run without them it would
+    download them all again, Databento's at a price (5 November 2026: 19 GB of them sent there)."""
+    away = kept_away(raw)
+    if away:
+        raise SystemExit(f"{', '.join(away)} of {raw or RAW_DIR} are kept on the research server, not here: bring them "
+                         f"back first - cd ~/Dev/stockhunt/engine && .venv/bin/python -m research.measurements restore "
+                         f"{raw or RAW_DIR}")
+
+
 DUKASCOPY_DIR = DATA_DIR / "raw" / "dukascopy"                # its monthly files as they arrive, kept to resume
 # seconds after each request: at 1.5 it refused one month four times in a row within 20 minutes (2026-09-26)
 DUKASCOPY_PAUSE = 5.0

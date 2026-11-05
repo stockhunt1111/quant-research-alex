@@ -36,6 +36,7 @@ from lab.data import spreads, store
 from lab.data.universes import STOCKHUNT_COMMODITIES
 from lab.foundation import log
 from lab.foundation.config import DATA_DIR
+from lab.upkeep import vendors
 from lab.upkeep.vendors import (
     DUKASCOPY_NAMES,
     Budget,
@@ -316,6 +317,7 @@ def main() -> None:
     ap.add_argument("--symbols", nargs="*")
     ap.add_argument("--max-requests", type=int)
     args = ap.parse_args()
+    vendors.refused_while_kept_away()
     log.setup(f"spread_refresh_{args.source}")
     quotes = args.symbols or STOCKHUNT_COMMODITIES
     if args.source == "exness":
