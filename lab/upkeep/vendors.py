@@ -42,8 +42,8 @@ def refused_while_kept_away(raw=None) -> None:
     away = kept_away(raw)
     if away:
         raise SystemExit(f"{', '.join(away)} of {raw or RAW_DIR} are kept on the research server, not here: bring them "
-                         f"back first - cd ~/Dev/stockhunt/engine && .venv/bin/python -m research.measurements restore "
-                         f"{raw or RAW_DIR}")
+                         f"back first, from a copy of the engine's origin/main - cd <copy> && PYTHONPATH=$PWD "
+                         f"~/Dev/stockhunt/engine/.venv/bin/python -m research.measurements restore {raw or RAW_DIR}")
 
 
 DUKASCOPY_DIR = DATA_DIR / "raw" / "dukascopy"                # its monthly files as they arrive, kept to resume
